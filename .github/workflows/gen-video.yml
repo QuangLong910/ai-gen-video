@@ -15,7 +15,7 @@ on:
 
 jobs:
   generate-video:
-    name: 🎬 Render Video & Gửi Telegram
+    name: 🎬 Render Video Nét Gốc (1080x1920)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 

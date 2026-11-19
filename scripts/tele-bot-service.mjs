@@ -815,46 +815,47 @@ export const VideoContent: React.FC<VideoContentProps> = ({
       stdio: 'inherit',
     });
 
-    // Tối ưu dung lượng video bằng FFmpeg (giảm 70-80% dung lượng, chống nghẽn mạng & timeout khi upload Telegram)
-    const optPath = path.join(ROOT, `videos/${slug}/output/video_opt.mp4`);
-    try {
-      console.log('⚡ Đang nén video tối ưu dung lượng với FFmpeg...');
-      execSync(`ffmpeg -i "${outputPath}" -vcodec libx264 -crf 26 -preset fast -acodec aac -b:a 128k "${optPath}" -y`, {
-        cwd: ROOT,
-        stdio: 'pipe',
-      });
-      if (fs.existsSync(optPath) && fs.statSync(optPath).size > 0) {
-        fs.renameSync(optPath, outputPath);
-        console.log(`✅ Nén video hoàn tất! Dung lượng mới: ${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB`);
+    const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
+
+    // Nếu chạy cục bộ trên bot Telegram thì mới cần nén và gửi file video
+    // Nếu chạy trên GitHub Actions thì BỎ NÉN (giữ nét gốc) và BỎ GỬI FILE (tải trực tiếp từ GitHub siêu tốc)
+    if (!isGitHubActions && replyMessageId) {
+      const optPath = path.join(ROOT, `videos/${slug}/output/video_opt.mp4`);
+      try {
+        console.log('⚡ Đang nén video tối ưu dung lượng với FFmpeg...');
+        execSync(`ffmpeg -i "${outputPath}" -vcodec libx264 -crf 26 -preset fast -acodec aac -b:a 128k "${optPath}" -y`, {
+          cwd: ROOT,
+          stdio: 'pipe',
+        });
+        if (fs.existsSync(optPath) && fs.statSync(optPath).size > 0) {
+          fs.renameSync(optPath, outputPath);
+          console.log(`✅ Nén video hoàn tất! Dung lượng mới: ${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB`);
+        }
+      } catch (e) {
+        console.warn('⚠️ Bỏ qua nén FFmpeg:', e.message);
       }
-    } catch (e) {
-      console.warn('⚠️ Bỏ qua nén FFmpeg:', e.message);
-    }
 
-    // 6. Gửi Video + Caption về Telegram
-    await sendMessage(`📤 <i>Bước 5/5: Đang tải video hoàn thiện lên Telegram của bạn...</i>`, replyMessageId);
-    await sendChatAction('upload_video');
-
-    const hashtagsStr = scriptData.hashtags.slice(0, 5).join(' ');
-    const caption = `🚨 <b>${scriptData.captionTitle}</b>\n\n${scriptData.captionBody}\n\n📌 <b>Nguồn:</b> ${articleData.domain}\n\n${hashtagsStr}`;
-
-    let uploadSuccess = false;
-    try {
-      await sendVideo(outputPath, caption, replyMessageId);
-      uploadSuccess = true;
-    } catch (sendErr) {
-      console.warn('⚠️ Gửi trực tiếp qua Telegram thất bại (do mạng quốc tế bóp băng thông):', sendErr.message);
+      await sendMessage(`📤 <i>Bước 5/5: Đang tải video hoàn thiện lên Telegram của bạn...</i>`, replyMessageId);
+      await sendChatAction('upload_video');
+      try {
+        const hashtagsStr = scriptData.hashtags.slice(0, 5).join(' ');
+        const caption = `🚨 <b>${scriptData.captionTitle}</b>\n\n${scriptData.captionBody}\n\n📌 <b>Nguồn:</b> ${articleData.domain}\n\n${hashtagsStr}`;
+        await sendVideo(outputPath, caption, replyMessageId);
+      } catch (sendErr) {
+        console.warn('⚠️ Gửi trực tiếp qua Telegram thất bại:', sendErr.message);
+      }
     }
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
     const runUrl = process.env.GITHUB_RUN_URL;
-    let finishMsg = `🎉 <b>XUẤT VIDEO THÀNH CÔNG!</b>\n⏱ <b>Thời gian xử lý:</b> ${elapsed} giây\n📐 <b>Định dạng:</b> 1080x1920 (9:16 Vertical)\n🎬 <b>Thời lượng:</b> ${(totalFrames / 30).toFixed(1)}s\n\n`;
+    const hashtagsStr = scriptData.hashtags.slice(0, 5).join(' ');
+    let finishMsg = `🎉 <b>XUẤT VIDEO THÀNH CÔNG!</b>\n⏱ <b>Thời gian xử lý:</b> ${elapsed} giây\n📐 <b>Định dạng:</b> 1080x1920 (Nét gốc)\n🎬 <b>Thời lượng:</b> ${(totalFrames / 30).toFixed(1)}s\n\n` +
+      `📝 <b>Caption gợi ý đăng bài:</b>\n🚨 <b>${scriptData.captionTitle}</b>\n${scriptData.captionBody}\n\n📌 <b>Nguồn:</b> ${articleData.domain}\n${hashtagsStr}\n\n`;
 
-    if (uploadSuccess) {
-      finishMsg += `👉 <i>Video đã gửi ở trên, bạn có thể lưu về máy để đăng ngay!</i>`;
-    }
     if (runUrl) {
-      finishMsg += `\n\n📥 <b>Link tải video trực tiếp từ GitHub (siêu tốc, nét gốc):</b>\n<a href="${runUrl}">${runUrl}</a>\n<i>(Kéo xuống dưới mục Artifacts để tải file video về điện thoại)</i>`;
+      finishMsg += `📥 <b>Link tải video trực tiếp:</b>\n<a href="${runUrl}">${runUrl}</a>\n<i>(Bấm vào link ➔ kéo xuống mục Artifacts để tải video về máy nhé!)</i>`;
+    } else {
+      finishMsg += `👉 <i>Video đã gửi ở trên, bạn có thể lưu về máy để đăng ngay!</i>`;
     }
 
     await sendMessage(finishMsg, replyMessageId);
