@@ -1,24 +1,22 @@
-import React from 'react';
 import {Composition, registerRoot} from 'remotion';
-import {Video, type VideoProps} from './Video';
+import {VideoContent} from './VideoContent';
+import {TOTAL_FRAMES} from './scenes/tokens';
 
-// These values are updated by the coder agent after each video generation.
-const defaultSlug = 'starter';
-const defaultDuration = 150;
-const defaultWidth = 1080;
-const defaultHeight = 1920;
-
-export const RemotionRoot: React.FC = () => (
-  <Composition
-    id="Video"
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    component={Video as any}
-    durationInFrames={defaultDuration}
-    fps={30}
-    width={defaultWidth}
-    height={defaultHeight}
-    defaultProps={{slug: defaultSlug} satisfies VideoProps}
-  />
-);
+export const RemotionRoot: React.FC = () => {
+  return (
+    <Composition
+      id="SocialVideo"
+      component={VideoContent}
+      durationInFrames={TOTAL_FRAMES}
+      fps={30}
+      width={1080}
+      height={1920}
+      defaultProps={{
+        slug: '2026-11-19-de-xuat-khong-phat-xe-di-qua-v-9810',
+        showSubtitles: false,
+      }}
+    />
+  );
+};
 
 registerRoot(RemotionRoot);

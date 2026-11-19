@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useCurrentFrame, useVideoConfig, staticFile } from "remotion";
+import { useCurrentFrame, useVideoConfig, staticFile, delayRender, continueRender } from "remotion";
 import { loadFont } from "@remotion/google-fonts/BeVietnamPro";
 
 // Load font once at module level
@@ -46,6 +46,14 @@ export interface SubtitlesProps {
    * Font size in px. Default: 38
    */
   fontSize?: number;
+  /**
+   * Only display subtitles from this frame onwards. Default: 0
+   */
+  startFrame?: number;
+  /**
+   * Bottom CSS position. Default: "9%"
+   */
+  bottom?: string | number;
 }
 
 // ─── Fixed design constants ───────────────────────────────────────────────────
@@ -104,12 +112,15 @@ export const Subtitles: React.FC<SubtitlesProps> = ({
   maxWords = 7,
   activeColor = DEFAULT_ACTIVE_COLOR,
   fontSize = 38,
+  startFrame = 0,
+  bottom = "9%",
 }) => {
   const [words, setWords] = useState<WordTimestamp[]>([]);
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
   useEffect(() => {
+    const handle = delayRender("Loading timeline subtitles");
     fetch(staticFile(`${slug}/timeline.json`))
       .then((r) => r.json())
       .then((data: Timeline | WordTimestamp[]) => {
@@ -122,8 +133,12 @@ export const Subtitles: React.FC<SubtitlesProps> = ({
         } else {
           setWords([]);
         }
+        continueRender(handle);
       })
-      .catch(() => setWords([]));
+      .catch(() => {
+        setWords([]);
+        continueRender(handle);
+      });
   }, [slug]);
 
   // Build sentences, then split each into fixed chunks
@@ -167,6 +182,10 @@ export const Subtitles: React.FC<SubtitlesProps> = ({
     return last;
   }, [chunks, chunkIdx, currentTime]);
 
+  if (frame < startFrame) {
+    return null;
+  }
+
   if (chunkIdx === -1) return null;
 
   const chunk = chunks[chunkIdx];
@@ -175,7 +194,7 @@ export const Subtitles: React.FC<SubtitlesProps> = ({
     <div
       style={{
         position: "absolute",
-        bottom: "15%",
+        bottom,
         left: 0,
         right: 0,
         display: "flex",

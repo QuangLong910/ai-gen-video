@@ -88,7 +88,26 @@ approval-aware Execution Contract. Treat approvals as pauses inside the same
 run, resume automatically after approval, and persist until setup is verified
 or a genuine external blocker is reached.
 
-When the user types `/gen-video [--template <template-id>] [--audio=<mode>] <context>`:
+When the user types `/gen-video [--template <template-id>] [--audio=<mode>] <context>` or provides an article URL/request:
+→ If no template is specified or when generating news from an article link, use `news/honghot-social` (channel "HÓNG HỚT 24/7", documented in `docs/templates/news/honghot-social.md`).
+→ Single-source rule: strictly use ONE single news source per video. Never mix content, quotes, or images from different newspapers into one video.
+→ Image scale priority rule: Nếu scale ảnh mà ảnh vẫn đẹp, rõ nét, không vỡ hạt và không bị cắt mất chi tiết quan trọng thì HẠN CHẾ làm mờ viền xung quanh (blur background) mà ƯU TIÊN scale ảnh (hoặc dùng cover/zoom hợp lý) để ảnh hiển thị rộng và ấn tượng nhất.
+→ Caption & Hashtag rule: Khi viết caption/mô tả cho video đăng mạng xã hội (TikTok, Reels, Facebook, YouTube Shorts), CHỈ DÙNG TỐI ĐA 5 HASHTAG (chọn lọc 5 hashtag đắt giá, cô đọng và liên quan nhất tới chủ đề/kênh, không spam hashtag).
+→ Phonetic voice rule: Với kênh 'Hóng Hớt 24/7', khi đọc lời bình voiceover/TTS bắt buộc phải phát âm là 'Hóng Hớt hai tư trên bảy' (tuyệt đối không đọc là 'hai mươi tư bảy' hay 'hai tư gạch bảy').
+→ Audio SFX rule: Tuyệt đối KHÔNG dùng hiệu ứng âm thanh tiếng xé giấy (paper rip / paper tear / page-turn SFX) hoặc nhạc nền có tạp âm xé giấy trong bất kỳ video nào từ nay về sau.
+→ Anti-AI Image Rule for Legal/Court/Crime News: Tuyệt đối KHÔNG DÙNG AI (image generator) để tạo ảnh minh họa cho các tin thời sự pháp luật, đại án kinh tế, bắt bớ tội phạm, phiên tòa xét xử hoặc bất kỳ vụ án có nhân vật có thật (tuyệt đối không để AI vẽ mặt bị cáo, vẽ phòng xử án, vẽ công an còng tay). Với các tin pháp luật nhạy cảm, BẮT BUỘC:
+  * Dùng ảnh báo chí chính thống chụp thật được đăng tải trên các báo lớn (Dân Trí, Tuổi Trẻ, CAND, VnExpress...).
+  * Dùng đồ họa thông tin (Infographics vụ án, sơ đồ dòng tiền, tóm tắt mốc sự kiện, trích dẫn phát ngôn đắt giá) hoặc ảnh chụp trích đoạn bài báo chính thống.
+  * Nếu chưa có ảnh thực tế từ phiên tòa, sử dụng motion typography / headline đồ họa tin tức báo chí, tuyệt đối không tạo ảnh AI giả lập nhân thân thực tế.
+→ 3-second hook rule: Trong 3 giây đầu tiên (Hook mở đầu), BẮT BUỘC phải cài cắm các từ ngữ giật gân, khẩn cấp, cảnh báo hoặc gây sốc mạnh phù hợp với từng chủ đề (ví dụ: 'Tin cực nóng!', 'Tin khẩn cấp!', 'Biến căng vừa nổ ra!', 'Chấn động!', 'Cơn điên rồ vừa xảy ra!'...) ngay từ câu đầu tiên để chặn đứng thao tác lướt qua (stop-the-scroll), tối ưu retention giữ chân người xem cao nhất.
+→ Mobile-First High-Retention Layout rule:
+  * TÁCH TIÊU ĐỀ RA KHỎI BANNER: Tuyệt đối không nhét cả tiêu đề dài vào banner dưới làm chữ bị nhỏ li ti không đọc nổi trên điện thoại.
+  * Tiêu đề và text CĂN GIỮA TRỰC TIẾP TRÊN ẢNH: Toàn bộ cụm tiêu đề chính (cỡ 76-84px vàng viền đen dày, 1 dòng duy nhất) và tóm tắt được căn giữa theo cả chiều dọc và ngang trên diện tích ảnh, tạo trọng tâm thị giác hoàn hảo trên điện thoại.
+  * Banner dưới hạ thấp còn 1/6 đáy màn hình (~320px): Dành trọn 83.3% diện tích phía trên cho ảnh/video thị giác to lớn. Nền banner giữ nguyên banner.png gốc của kênh nhưng được hạ xuống đáy tinh tế, chỉ hiển thị logo/tên kênh/ngày nhỏ ở đáy. Không nhét chữ dài quá 5-7 từ vào banner.
+  * Pacing đổi ảnh nhanh (2.5s - 3s / ảnh): Tuyệt đối KHÔNG giữ 1 ảnh đứng im 7-9 giây khiến người xem chán lướt qua. Trung bình cứ 2.5s - 3s phải đổi ảnh mới hoặc đổi góc zoom Ken Burns nhẹ vào khuôn mặt/chi tiết quan trọng.
+  * Dynamic Subtitles: Luôn có phụ đề TTS chạy chữ theo lời nói ở giữa màn hình (ngay trên mép banner) để người xem tắt tiếng vẫn nắm bắt toàn bộ câu chuyện.
+→ Subtitles Proofreader rule: Bắt buộc luôn chạy bước rà soát chính tả chữ chạy tự động (Subtitles Proofreader) sau khi STT xong để đối chiếu timeline.json với kịch bản gốc script.json, sửa sạch toàn bộ lỗi phiên âm, lỗi nghe nhầm hay sai chính tả ngớ ngẩn (như "cô lộc bộ" ➔ "câu lạc bộ", "giàn" ➔ "dàn", sai tên riêng/giải đấu) trước khi đưa vào render video.
+→ Evergreen & Emotional/Humorous Filler rule: Khi thời điểm đói tin nóng hoặc người dùng yêu cầu tìm tin, luôn chủ động chuẩn bị và đề xuất thêm các chủ đề cảm động (nghĩa cử ấm lòng, tình người trong mưa lũ/khó khăn, tấm gương nghị lực) hoặc hài hước (tình huống đời thường dở khóc dở cười, chuyện đám cưới/thú cưng/văn phòng viral) để kênh luôn có nội dung giữ chân khán giả và duy trì lịch đăng đều đặn mỗi ngày.
 → Read `docs/SKILL-GEN-VIDEO.md` and execute the 8-step pipeline:
   Setup → Planner → Teller → Audio → Transcribe → Spec → Coder → Render
 

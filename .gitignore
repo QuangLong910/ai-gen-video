@@ -42,3 +42,20 @@ load-templates/*
 # Build / cache
 .remotion/
 dist/
+.trends_cache.json
+
+# Temporary root test media
+*.pcm
+*.avif
+test_*.jpg
+cand_test_*
+hvt_*
+single_*
+voice_*
+gemini-*
+
+# Generated per-video assets in public
+public/2026-*
+public/stories/
+public/test_*
+

@@ -204,7 +204,8 @@ Process:
    template ID suffix or legacy `audioDesign.mode`.
 7. Update only `defaultSlug` and `defaultDuration` in `src/Root.tsx`, unless the
    selected template explicitly requires another change.
-8. Run `npx tsc --noEmit`.
+8. Image scaling priority: Nếu scale ảnh mà ảnh vẫn đẹp, sắc nét, không bị vỡ hạt và không mất chủ thể chính thì hạn chế làm mờ viền xung quanh (blur background) mà ưu tiên scale ảnh (cover/zoom hợp lý) để ảnh phủ kín và nổi bật tối đa.
+9. Run `npx tsc --noEmit`.
 
 Template behavior:
 

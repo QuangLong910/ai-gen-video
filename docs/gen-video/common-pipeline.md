@@ -120,6 +120,10 @@ from `src/templates/registry.ts` overrides the generic environment voice.
 
 Verify `public/<slug>/voice.mp3` exists.
 
+If `scripts/tts.mjs` fails (e.g. all TTS models or providers are exhausted / rate-limited), STOP immediately and notify the user to update their key:
+`/update-config --key GEMINI_API_KEY --value <api-key-moi>`
+Do not fake or synthesize dummy audio files.
+
 ### Audio Reuse Guard
 
 `voice.mp3` is an expensive generated artifact and is the source of truth once it

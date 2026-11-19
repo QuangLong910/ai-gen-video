@@ -1,0 +1,54 @@
+name: Tạo Video Nhanh Từ Link Báo (Hóng Hớt 24/7)
+
+on:
+  workflow_dispatch:
+    inputs:
+      article_url:
+        description: 'Dán link bài báo (Tuổi Trẻ, Dân Trí, VnExpress, Tiền Phong...):'
+        required: true
+        type: string
+
+jobs:
+  generate-video:
+    name: 🎬 Render Video & Gửi Telegram
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 Tải mã nguồn repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Cài đặt Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 🐍 Cài đặt Python & Thư viện Pillow
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: 📦 Cài đặt Pillow cho Python
+        run: pip install pillow
+
+      - name: 🎥 Cài đặt FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: 📦 Cài đặt npm dependencies
+        run: npm ci || npm install
+
+      - name: 🌐 Cài đặt trình duyệt cho Remotion
+        run: npx remotion browser ensure
+
+      - name: 🚀 Chạy Pipeline Tạo Video & Gửi Về Telegram
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          node scripts/tele-bot-service.mjs "${{ inputs.article_url }}"

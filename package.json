@@ -19,7 +19,8 @@
     "update-logo": "node scripts/update-logo.mjs",
     "update-version": "node scripts/update-version.mjs",
     "tts": "node scripts/tts.mjs",
-    "transcribe": "node scripts/transcribe.mjs"
+    "transcribe": "node scripts/transcribe.mjs",
+    "tele-bot": "node scripts/tele-bot-service.mjs"
   },
   "dependencies": {
     "@google/genai": "2.5.0",

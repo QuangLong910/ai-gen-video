@@ -175,6 +175,22 @@ export const TEMPLATE_REGISTRY: TemplateRegistryEntry[] = [
       specDocPath: "docs/templates/creative/source-led.md",
     },
   {
+      id: "news/honghot-social",
+      behavior: "hybrid",
+      name: "Hóng Hớt 24/7 Social News",
+      category: "news",
+      description:
+        "Bản tin mạng xã hội chuẩn kênh Hóng Hớt 24/7: 3.5s đầu hook với banner badge thương hiệu, ngày đăng, tiêu đề nổi bật; các cảnh sau trình bày ảnh dẫn chứng sắc nét trên nền mờ 9:16 kèm nguồn và watermark.",
+      aspectRatio: "9:16",
+      assetManifestPath: "public/assets/news/manifest.json",
+      defaultBgMusic: "assets/news/music/grand_project-breaking-news-background-music_short.mp3",
+      specDocPath: "docs/templates/news/honghot-social.md",
+      voice: {
+        geminiVoice: "Charon",
+        elevenLabsVoiceId: "pNInz6obpgDQGcFmaJgB",
+      },
+    },
+  {
       id: "news/current-affairs-light",
       behavior: "fixed",
       name: "Current Affairs Light",

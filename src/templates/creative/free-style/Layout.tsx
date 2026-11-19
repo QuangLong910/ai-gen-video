@@ -14,6 +14,7 @@ export interface FreeStyleLayoutProps {
   background?: string;
   subtitleAccent?: string;
   subtitleFontSize?: number;
+  subtitleStartFrame?: number;
   showSubtitles?: boolean;
   watermarkSrc?: string;
 }
@@ -24,6 +25,7 @@ export const FreeStyleLayout: React.FC<FreeStyleLayoutProps> = ({
   background = '#050816',
   subtitleAccent = '#32E6FF',
   subtitleFontSize = 38,
+  subtitleStartFrame = 0,
   showSubtitles = process.env.SHOW_SUBTITLES !== 'false',
   watermarkSrc = 'watermark.png',
 }) => (
@@ -53,6 +55,7 @@ export const FreeStyleLayout: React.FC<FreeStyleLayoutProps> = ({
         slug={slug}
         activeColor={subtitleAccent}
         fontSize={subtitleFontSize}
+        startFrame={subtitleStartFrame}
       />
     )}
   </AbsoluteFill>
