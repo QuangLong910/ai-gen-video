@@ -262,30 +262,40 @@ async function scrapeArticle(url) {
     }
   }
 
-  // 3. Images (Ưu tiên tuyệt đối og:image chuẩn chất lượng cao và ảnh bài viết, loại bỏ icon/avatar hệ thống)
+  // 3. Images (Bằng mọi giá phải lấy được ảnh báo chí thực tế)
   const imgUrls = [];
-  const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](.*?)["']/i);
-  if (ogMatch && ogMatch[1]) {
-    const ogUrl = ogMatch[1].trim();
-    const ogLower = ogUrl.toLowerCase();
-    if (
-      !ogLower.includes('logo') &&
-      !ogLower.includes('icon') &&
-      !ogLower.includes('badge') &&
-      !ogLower.includes('userdeffault') &&
-      !ogLower.includes('default_avatar') &&
-      !ogLower.includes('no-avatar') &&
-      !ogLower.includes('avatar-default')
-    ) {
-      imgUrls.push(ogUrl);
+
+  // A. Meta tags (og:image, twitter:image, image, thumbnailUrl - hỗ trợ mọi thứ tự thuộc tính)
+  const metaRegex = /<meta\s+([^>]+)>/gi;
+  let metaMatch;
+  while ((metaMatch = metaRegex.exec(html)) !== null) {
+    const attrs = metaMatch[1];
+    const isImageMeta = /(?:property|name|itemprop)=["'](?:og:image|twitter:image|image|thumbnailUrl)["']/i.test(attrs);
+    if (isImageMeta) {
+      const c = attrs.match(/content=["']([^"']+)["']/i);
+      if (c && c[1].startsWith('http') && !imgUrls.includes(c[1])) {
+        const lower = c[1].toLowerCase();
+        if (!lower.includes('logo') && !lower.includes('badge') && !lower.includes('banner')) {
+          imgUrls.push(c[1]);
+        }
+      }
     }
   }
 
-  // Tìm trong vùng nội dung bài báo
-  const contentMatch = html.match(/<(?:div|article)[^>]+(?:class|id)=["'][^"']*(?:detail-cmain|content-detail|detail-content|fck_detail|article__content|singular-content|article-content|fck)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|article)>/i);
+  // B. Link rel="image_src"
+  const linkRegex = /<link\s+[^>]*rel=["']image_src["'][^>]*href=["']([^"']+)["']/gi;
+  let lMatch;
+  while ((lMatch = linkRegex.exec(html)) !== null) {
+    if (lMatch[1].startsWith('http') && !imgUrls.includes(lMatch[1])) {
+      imgUrls.push(lMatch[1]);
+    }
+  }
+
+  // C. Tìm trong vùng nội dung bài báo
+  const contentMatch = html.match(/<(?:div|article)[^>]+(?:class|id)=["'][^"']*(?:detail-cmain|content-detail|detail-content|fck_detail|article__content|singular-content|article-content|fck|article-body|post-content|cms-body|body-content)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|article)>/i);
   const searchHtml = contentMatch ? contentMatch[1] : html;
 
-  const imgRegex = /(?:src|data-src)=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi;
+  const imgRegex = /(?:src|data-src|data-original)=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi;
   let imgMatch;
   while ((imgMatch = imgRegex.exec(searchHtml)) !== null) {
     const link = imgMatch[1].split('?')[0];
@@ -303,7 +313,9 @@ async function scrapeArticle(url) {
       lower.includes('banner') ||
       lower.includes('thumb_w/') ||
       lower.includes('web_images') ||
-      lower.includes('transparent.png');
+      lower.includes('transparent.png') ||
+      lower.includes('35x35') ||
+      lower.includes('40x22');
     if (!isBad && !imgUrls.includes(link)) {
       imgUrls.push(link);
     }
@@ -314,22 +326,54 @@ async function scrapeArticle(url) {
     domain,
     title: title || 'Tin tức nóng trong ngày',
     content: paras.slice(0, 10).join('\n\n'),
-    imgUrls: imgUrls.slice(0, 5),
+    imgUrls: imgUrls.slice(0, 25),
   };
 }
 
-async function downloadAndCropImages(imgUrls, outDir) {
+// ─── Tìm kiếm ảnh báo chí thực tế qua Web (Bằng mọi giá phải có ảnh) ─────────
+async function searchNewsImages(query) {
+  try {
+    const cleanQ = query.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    const q = encodeURIComponent(cleanQ.slice(0, 80));
+    const url = `https://www.bing.com/images/async?q=${q}&first=1&count=20&mmasync=1`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const murlMatches = [...html.matchAll(/murl&quot;:&quot;(http[^&]+)&quot;/gi)].map(m => m[1]);
+    return murlMatches;
+  } catch (e) {
+    console.warn('[searchNewsImages] Lỗi tìm ảnh báo chí bổ trợ:', e.message);
+    return [];
+  }
+}
+
+async function downloadAndCropImages(imgUrls, outDir, fallbackQuery = '') {
   fs.mkdirSync(outDir, { recursive: true });
   const rawDownloaded = [];
 
+  // Lần 1: Thử tải từ danh sách ảnh cào được từ trang web
+  let candidates = [...imgUrls];
+
+  // Nếu trang web không có ảnh nào, hoặc người dùng gửi text: Lập tức tìm kiếm ảnh báo chí thực tế
+  if (candidates.length === 0 && fallbackQuery) {
+    console.log(`🔍 Trang web không có ảnh, đang tìm kiếm ảnh báo chí thực tế cho: "${fallbackQuery.slice(0, 60)}"...`);
+    const searched = await searchNewsImages(fallbackQuery);
+    candidates.push(...searched);
+  }
+
   // Tải các ảnh hợp lệ và kiểm tra độ phân giải tối thiểu (> 300x200)
-  for (let i = 0; i < Math.min(imgUrls.length, 6); i++) {
-    const imgUrl = imgUrls[i];
-    const rawPath = path.join(outDir, `raw_${i}.jpg`);
+  for (let i = 0; i < candidates.length; i++) {
+    if (rawDownloaded.length >= 4) break; // Đã đủ 4 ảnh chất lượng cao
+    const imgUrl = candidates[i];
+    const rawPath = path.join(outDir, `raw_${rawDownloaded.length}.jpg`);
 
     try {
       const res = await fetch(imgUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
       });
       if (!res.ok) continue;
       const arrayBuffer = await res.arrayBuffer();
@@ -347,12 +391,48 @@ if w < 300 or h < 200:
       try {
         execSync(checkPy);
         rawDownloaded.push(rawPath);
+        console.log(`  [Ảnh ${rawDownloaded.length}] Tải thành công ảnh sắc nét: ${imgUrl.slice(0, 70)}...`);
       } catch (e) {
-        console.warn(`[Loại ảnh rác] Kích thước ảnh quá nhỏ từ: ${imgUrl}`);
         if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
       }
     } catch (e) {
-      console.warn(`Lỗi tải ảnh ${i}:`, e.message);
+      // Bỏ qua lỗi kết nối từng ảnh
+    }
+  }
+
+  // Nếu vẫn chưa tìm được ảnh nào từ trang web, thực hiện tìm kiếm ảnh thực tế từ báo chí
+  if (rawDownloaded.length === 0 && fallbackQuery) {
+    console.log(`🔍 Chưa có ảnh đạt chuẩn, đang kích hoạt bộ tìm kiếm ảnh báo chí chuyên sâu cho: "${fallbackQuery.slice(0, 60)}"...`);
+    const searched = await searchNewsImages(fallbackQuery);
+    for (let i = 0; i < searched.length; i++) {
+      if (rawDownloaded.length >= 4) break;
+      const imgUrl = searched[i];
+      const rawPath = path.join(outDir, `raw_${rawDownloaded.length}.jpg`);
+
+      try {
+        const res = await fetch(imgUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        });
+        if (!res.ok) continue;
+        const arrayBuffer = await res.arrayBuffer();
+        if (arrayBuffer.byteLength < 10240) continue;
+        fs.writeFileSync(rawPath, Buffer.from(arrayBuffer));
+
+        const checkPy = `python3 -c "
+from PIL import Image
+im = Image.open('${rawPath}')
+w, h = im.size
+if w < 300 or h < 200:
+    exit(1)
+"`;
+        try {
+          execSync(checkPy);
+          rawDownloaded.push(rawPath);
+          console.log(`  [Ảnh tìm kiếm ${rawDownloaded.length}] Tải thành công ảnh báo chí: ${imgUrl.slice(0, 70)}...`);
+        } catch (e) {
+          if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+        }
+      } catch (e) {}
     }
   }
 
@@ -435,7 +515,7 @@ im_c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB').save(
     }
   }
 
-  // Fallback to clean default studio news background if no valid images found (NEVER copy banner.png!)
+  // Fallback to clean default studio news background CỰC KỲ HIẾM KHI XẢY RA
   if (savedImages.length === 0) {
     const fallbackSource = path.join(ROOT, 'public/assets/news/default_news_bg.jpg');
     const fallbackDest = path.join(outDir, 'crop_0.jpg');
@@ -630,9 +710,9 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
     }
     console.log(`[${slug}] Đã tiếp nhận nội dung: ${articleData.title}`);
 
-    // Tải & crop ảnh (nếu không có ảnh sẽ dùng nền studio tin tức chuyên nghiệp)
+    // Tải & crop ảnh (Bằng mọi giá phải có ảnh báo chí thực tế, tự động tìm kiếm web nếu trang thiếu ảnh)
     const evidenceDir = path.join(ROOT, `public/${slug}/evidence`);
-    const savedImages = await downloadAndCropImages(articleData.imgUrls, evidenceDir);
+    const savedImages = await downloadAndCropImages(articleData.imgUrls, evidenceDir, articleData.title);
     console.log(`[${slug}] Đã chuẩn bị ${savedImages.length} ảnh hiển thị.`);
 
     // 2. Viết kịch bản bằng Gemini AI
