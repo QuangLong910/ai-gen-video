@@ -853,7 +853,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
       `📝 <b>Caption gợi ý đăng bài:</b>\n🚨 <b>${scriptData.captionTitle}</b>\n${scriptData.captionBody}\n\n📌 <b>Nguồn:</b> ${articleData.domain}\n${hashtagsStr}\n\n`;
 
     if (runUrl) {
-      finishMsg += `📥 <b>Link tải video trực tiếp:</b>\n<a href="${runUrl}">${runUrl}</a>\n<i>(Bấm vào link ➔ kéo xuống mục Artifacts để tải video về máy nhé!)</i>`;
+      finishMsg += `📥 <b>Link tải video trực tiếp cho điện thoại:</b>\nhttps://github.com/QuangLong910/ai-gen-video/releases\n<i>(Bấm vào link ➔ chạm vào file <b>video.mp4</b> là lưu thẳng vào Thư viện ảnh điện thoại!)</i>`;
     } else {
       finishMsg += `👉 <i>Video đã gửi ở trên, bạn có thể lưu về máy để đăng ngay!</i>`;
     }
