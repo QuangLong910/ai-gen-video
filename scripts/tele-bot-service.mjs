@@ -262,18 +262,27 @@ async function scrapeArticle(url) {
     }
   }
 
-  // 3. Images (Ưu tiên tuyệt đối og:image chuẩn chất lượng cao và ảnh bài viết, loại bỏ 100% icon/avatar)
+  // 3. Images (Ưu tiên tuyệt đối og:image chuẩn chất lượng cao và ảnh bài viết, loại bỏ icon/avatar hệ thống)
   const imgUrls = [];
   const ogMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](.*?)["']/i);
   if (ogMatch && ogMatch[1]) {
     const ogUrl = ogMatch[1].trim();
-    if (!ogUrl.includes('logo') && !ogUrl.includes('avatar') && !ogUrl.includes('icon')) {
+    const ogLower = ogUrl.toLowerCase();
+    if (
+      !ogLower.includes('logo') &&
+      !ogLower.includes('icon') &&
+      !ogLower.includes('badge') &&
+      !ogLower.includes('userdeffault') &&
+      !ogLower.includes('default_avatar') &&
+      !ogLower.includes('no-avatar') &&
+      !ogLower.includes('avatar-default')
+    ) {
       imgUrls.push(ogUrl);
     }
   }
 
   // Tìm trong vùng nội dung bài báo
-  const contentMatch = html.match(/<(?:div|article)[^>]+(?:class|id)=["'][^"']*(?:detail-cmain|content-detail|detail-content|fck_detail|article__content|singular-content|article-content)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|article)>/i);
+  const contentMatch = html.match(/<(?:div|article)[^>]+(?:class|id)=["'][^"']*(?:detail-cmain|content-detail|detail-content|fck_detail|article__content|singular-content|article-content|fck)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|article)>/i);
   const searchHtml = contentMatch ? contentMatch[1] : html;
 
   const imgRegex = /(?:src|data-src)=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi;
@@ -281,17 +290,21 @@ async function scrapeArticle(url) {
   while ((imgMatch = imgRegex.exec(searchHtml)) !== null) {
     const link = imgMatch[1].split('?')[0];
     const lower = link.toLowerCase();
-    if (
-      !lower.includes('logo') &&
-      !lower.includes('icon') &&
-      !lower.includes('avatar') &&
-      !lower.includes('userdeffault') &&
-      !lower.includes('banner') &&
-      !lower.includes('thumb_w/') &&
-      !lower.includes('web_images') &&
-      !lower.includes('badge') &&
-      !imgUrls.includes(link)
-    ) {
+    const isBad =
+      lower.includes('logo') ||
+      lower.includes('icon') ||
+      lower.includes('badge') ||
+      lower.includes('userdeffault') ||
+      lower.includes('default_avatar') ||
+      lower.includes('no-avatar') ||
+      lower.includes('avatar-default') ||
+      lower.includes('user-avatar') ||
+      lower.includes('user_avatar') ||
+      lower.includes('banner') ||
+      lower.includes('thumb_w/') ||
+      lower.includes('web_images') ||
+      lower.includes('transparent.png');
+    if (!isBad && !imgUrls.includes(link)) {
       imgUrls.push(link);
     }
   }
@@ -422,9 +435,9 @@ im_c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB').save(
     }
   }
 
-  // Fallback to stock banner if no valid images found
+  // Fallback to clean default studio news background if no valid images found (NEVER copy banner.png!)
   if (savedImages.length === 0) {
-    const fallbackSource = path.join(ROOT, 'public/banner.png');
+    const fallbackSource = path.join(ROOT, 'public/assets/news/default_news_bg.jpg');
     const fallbackDest = path.join(outDir, 'crop_0.jpg');
     if (fs.existsSync(fallbackSource)) {
       fs.copyFileSync(fallbackSource, fallbackDest);
