@@ -56,6 +56,15 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           node scripts/tele-bot-service.mjs "${{ inputs.article_url }}" "${{ inputs.target_duration }}"
+
+      - name: 💾 Lưu Video vào GitHub (Để Tự Lên Tải Về Siêu Tốc)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-honghot247-${{ github.run_id }}
+          path: videos/*/output/video.mp4
+          retention-days: 14
 

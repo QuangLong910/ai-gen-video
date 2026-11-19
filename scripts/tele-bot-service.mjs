@@ -838,13 +838,26 @@ export const VideoContent: React.FC<VideoContentProps> = ({
     const hashtagsStr = scriptData.hashtags.slice(0, 5).join(' ');
     const caption = `🚨 <b>${scriptData.captionTitle}</b>\n\n${scriptData.captionBody}\n\n📌 <b>Nguồn:</b> ${articleData.domain}\n\n${hashtagsStr}`;
 
-    await sendVideo(outputPath, caption, replyMessageId);
+    let uploadSuccess = false;
+    try {
+      await sendVideo(outputPath, caption, replyMessageId);
+      uploadSuccess = true;
+    } catch (sendErr) {
+      console.warn('⚠️ Gửi trực tiếp qua Telegram thất bại (do mạng quốc tế bóp băng thông):', sendErr.message);
+    }
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
-    await sendMessage(
-      `🎉 <b>XUẤT VIDEO THÀNH CÔNG!</b>\n⏱ <b>Thời gian xử lý:</b> ${elapsed} giây\n📐 <b>Định dạng:</b> 1080x1920 (9:16 Vertical)\n🎬 <b>Thời lượng:</b> ${(totalFrames / 30).toFixed(1)}s\n\n👉 <i>Video đã gửi ở trên, bạn có thể lưu về máy để đăng ngay!</i>`,
-      replyMessageId
-    );
+    const runUrl = process.env.GITHUB_RUN_URL;
+    let finishMsg = `🎉 <b>XUẤT VIDEO THÀNH CÔNG!</b>\n⏱ <b>Thời gian xử lý:</b> ${elapsed} giây\n📐 <b>Định dạng:</b> 1080x1920 (9:16 Vertical)\n🎬 <b>Thời lượng:</b> ${(totalFrames / 30).toFixed(1)}s\n\n`;
+
+    if (uploadSuccess) {
+      finishMsg += `👉 <i>Video đã gửi ở trên, bạn có thể lưu về máy để đăng ngay!</i>`;
+    }
+    if (runUrl) {
+      finishMsg += `\n\n📥 <b>Link tải video trực tiếp từ GitHub (siêu tốc, nét gốc):</b>\n<a href="${runUrl}">${runUrl}</a>\n<i>(Kéo xuống dưới mục Artifacts để tải file video về điện thoại)</i>`;
+    }
+
+    await sendMessage(finishMsg, replyMessageId);
   } catch (error) {
     console.error('❌ Lỗi quy trình tạo video:', error);
     await sendMessage(`❌ <b>Lỗi trong quá trình tạo video:</b>\n<code>${error.message}</code>`, replyMessageId);
