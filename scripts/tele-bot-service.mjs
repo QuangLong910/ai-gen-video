@@ -262,10 +262,10 @@ async function scrapeArticle(url) {
     }
   }
 
-  // 3. Images (Bằng mọi giá phải lấy được ảnh báo chí thực tế)
+  // 3. STRICT EDITORIAL ARTICLE IMAGES ONLY (Chỉ lấy ảnh của bài báo, tuyệt đối không lấy phần ngoài bài báo)
   const imgUrls = [];
 
-  // A. Meta tags (og:image, twitter:image, image, thumbnailUrl - hỗ trợ mọi thứ tự thuộc tính)
+  // A. Meta tags: og:image, twitter:image, image, thumbnailUrl (Ảnh đại diện chính thức của bài báo)
   const metaRegex = /<meta\s+([^>]+)>/gi;
   let metaMatch;
   while ((metaMatch = metaRegex.exec(html)) !== null) {
@@ -275,7 +275,15 @@ async function scrapeArticle(url) {
       const c = attrs.match(/content=["']([^"']+)["']/i);
       if (c && c[1].startsWith('http') && !imgUrls.includes(c[1])) {
         const lower = c[1].toLowerCase();
-        if (!lower.includes('logo') && !lower.includes('badge') && !lower.includes('banner')) {
+        // Loại bỏ logo website, banner chung, default avatar
+        if (
+          !lower.includes('logo') &&
+          !lower.includes('banner') &&
+          !lower.includes('avatar') &&
+          !lower.includes('share') &&
+          !lower.includes('.svg') &&
+          !lower.includes('.gif')
+        ) {
           imgUrls.push(c[1]);
         }
       }
@@ -287,37 +295,87 @@ async function scrapeArticle(url) {
   let lMatch;
   while ((lMatch = linkRegex.exec(html)) !== null) {
     if (lMatch[1].startsWith('http') && !imgUrls.includes(lMatch[1])) {
-      imgUrls.push(lMatch[1]);
+      const lower = lMatch[1].toLowerCase();
+      if (!lower.includes('logo') && !lower.includes('banner') && !lower.includes('avatar') && !lower.includes('.svg')) {
+        imgUrls.push(lMatch[1]);
+      }
     }
   }
 
-  // C. Tìm trong vùng nội dung bài báo
-  const contentMatch = html.match(/<(?:div|article)[^>]+(?:class|id)=["'][^"']*(?:detail-cmain|content-detail|detail-content|fck_detail|article__content|singular-content|article-content|fck|article-body|post-content|cms-body|body-content)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|article)>/i);
-  const searchHtml = contentMatch ? contentMatch[1] : html;
+  // C. Tìm CHÍNH XÁC trong vùng nội dung bài báo (article body)
+  // Chỉ tìm trong thẻ <article> hoặc khối container nội dung bài báo
+  let contentHtml = '';
+  const articleTagMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+  if (articleTagMatch) {
+    contentHtml = articleTagMatch[1];
+  } else {
+    // Tìm vị trí bắt đầu của vùng nội dung bài viết
+    const bodySelectors = [
+      'detail-cmain', 'content-detail', 'detail-content', 'fck_detail',
+      'article__content', 'singular-content', 'article-content', 'cms-body', 'body-content'
+    ];
+    let startIdx = -1;
+    for (const sel of bodySelectors) {
+      const match = html.search(new RegExp(`<(?:div|section)[^>]+(?:class|id)=["'][^"']*${sel}`, 'i'));
+      if (match !== -1) {
+        startIdx = match;
+        break;
+      }
+    }
+    if (startIdx !== -1) {
+      // Cắt từ điểm bắt đầu đến footer/sidebar hoặc tối đa 60.000 ký tự
+      const rawChunk = html.slice(startIdx, startIdx + 60000);
+      const cutIdx = rawChunk.search(/<(?:footer|aside|div[^>]+id=["']comment|div[^>]+class=["'][^"']*(?:comment|sidebar|footer))/i);
+      contentHtml = cutIdx !== -1 ? rawChunk.slice(0, cutIdx) : rawChunk;
+    }
+  }
 
-  const imgRegex = /(?:src|data-src|data-original)=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/gi;
-  let imgMatch;
-  while ((imgMatch = imgRegex.exec(searchHtml)) !== null) {
-    const link = imgMatch[1].split('?')[0];
-    const lower = link.toLowerCase();
-    const isBad =
-      lower.includes('logo') ||
-      lower.includes('icon') ||
-      lower.includes('badge') ||
-      lower.includes('userdeffault') ||
-      lower.includes('default_avatar') ||
-      lower.includes('no-avatar') ||
-      lower.includes('avatar-default') ||
-      lower.includes('user-avatar') ||
-      lower.includes('user_avatar') ||
-      lower.includes('banner') ||
-      lower.includes('thumb_w/') ||
-      lower.includes('web_images') ||
-      lower.includes('transparent.png') ||
-      lower.includes('35x35') ||
-      lower.includes('40x22');
-    if (!isBad && !imgUrls.includes(link)) {
-      imgUrls.push(link);
+  if (contentHtml) {
+    // Loại bỏ triệt để các khối không thuộc nội dung báo chí (quảng cáo, form minigame, tin liên quan, bình luận)
+    const cleanedHtml = contentHtml
+      .replace(/<form[\s\S]*?<\/form>/gi, '')
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<div[^>]+class=["'][^"']*(?:boxG_|minigame|game|box-game|poll|vote|tin_lien_quan|tin-lien-quan|related|suggest|box-share|comment|banner|adbox|quangcao|sidebar)[^"']*["'][\s\S]*?<\/div>/gi, '');
+
+    // Quét các thẻ <img> nằm trong bài báo
+    const imgTagRegex = /<img\s+([^>]+)>/gi;
+    let m;
+    while ((m = imgTagRegex.exec(cleanedHtml)) !== null) {
+      const attrs = m[1];
+
+      // Bỏ qua nếu thuộc tính class, id, alt chứa từ khóa quảng cáo / UI / rác
+      if (/(?:logo|icon|button|player|flag|game|box|banner|avatar|close|share|ads|advertisement|sponsor|tin_lien_quan)/i.test(attrs)) {
+        continue;
+      }
+
+      // Lấy link ảnh từ data-original, data-src, hoặc src
+      const srcMatch = attrs.match(/(?:data-original|data-src|src)=["'](https?:\/\/[^"\x27]+\.(?:jpg|jpeg|png|webp)[^"\x27]*)["']/i);
+      if (!srcMatch) continue;
+
+      const link = srcMatch[1].split('?')[0];
+      const lower = link.toLowerCase();
+
+      // Kiểm tra URL ảnh
+      const isBadUrl =
+        lower.includes('logo') ||
+        lower.includes('icon') ||
+        lower.includes('player') ||
+        lower.includes('flag') ||
+        lower.includes('game') ||
+        lower.includes('box-game') ||
+        lower.includes('banner') ||
+        lower.includes('avatar') ||
+        lower.includes('35x35') ||
+        lower.includes('40x22') ||
+        lower.includes('svg') ||
+        lower.includes('close') ||
+        lower.includes('transparent') ||
+        lower.includes('default');
+
+      if (!isBadUrl && !imgUrls.includes(link)) {
+        imgUrls.push(link);
+      }
     }
   }
 
@@ -326,15 +384,15 @@ async function scrapeArticle(url) {
     domain,
     title: title || 'Tin tức nóng trong ngày',
     content: paras.slice(0, 10).join('\n\n'),
-    imgUrls: imgUrls.slice(0, 25),
+    imgUrls: imgUrls.slice(0, 6), // Chỉ giữ tối đa 6 ảnh báo chí thực thụ từ bài viết
   };
 }
 
-// ─── Tìm kiếm ảnh báo chí thực tế qua Web (Bằng mọi giá phải có ảnh) ─────────
+// ─── Tìm kiếm ảnh báo chí thực tế qua Web (Chỉ kích hoạt khi bài viết không có ảnh) ─────────
 async function searchNewsImages(query) {
   try {
     const cleanQ = query.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-    const q = encodeURIComponent(cleanQ.slice(0, 80));
+    const q = encodeURIComponent(cleanQ.slice(0, 60) + ' báo');
     const url = `https://www.bing.com/images/async?q=${q}&first=1&count=20&mmasync=1`;
     const res = await fetch(url, {
       headers: {
@@ -355,20 +413,10 @@ async function downloadAndCropImages(imgUrls, outDir, fallbackQuery = '') {
   fs.mkdirSync(outDir, { recursive: true });
   const rawDownloaded = [];
 
-  // Lần 1: Thử tải từ danh sách ảnh cào được từ trang web
-  let candidates = [...imgUrls];
-
-  // Nếu trang web không có ảnh nào, hoặc người dùng gửi text: Lập tức tìm kiếm ảnh báo chí thực tế
-  if (candidates.length === 0 && fallbackQuery) {
-    console.log(`🔍 Trang web không có ảnh, đang tìm kiếm ảnh báo chí thực tế cho: "${fallbackQuery.slice(0, 60)}"...`);
-    const searched = await searchNewsImages(fallbackQuery);
-    candidates.push(...searched);
-  }
-
-  // Tải các ảnh hợp lệ và kiểm tra độ phân giải tối thiểu (> 300x200)
-  for (let i = 0; i < candidates.length; i++) {
-    if (rawDownloaded.length >= 4) break; // Đã đủ 4 ảnh chất lượng cao
-    const imgUrl = candidates[i];
+  // Lần 1: Chỉ tải các ảnh báo chí thực thụ được trích xuất từ bài báo
+  for (let i = 0; i < imgUrls.length; i++) {
+    if (rawDownloaded.length >= 4) break;
+    const imgUrl = imgUrls[i];
     const rawPath = path.join(outDir, `raw_${rawDownloaded.length}.jpg`);
 
     try {
@@ -377,32 +425,35 @@ async function downloadAndCropImages(imgUrls, outDir, fallbackQuery = '') {
       });
       if (!res.ok) continue;
       const arrayBuffer = await res.arrayBuffer();
-      if (arrayBuffer.byteLength < 10240) continue; // Bỏ qua file rác < 10KB
+      if (arrayBuffer.byteLength < 15360) continue; // Bỏ qua file < 15KB
+
       fs.writeFileSync(rawPath, Buffer.from(arrayBuffer));
 
-      // Kiểm tra kích thước qua Python PIL, loại bỏ ảnh nhỏ < 300px
+      // Kiểm tra kích thước qua Python PIL: width >= 350, height >= 220, tỷ lệ ảnh chuẩn báo chí 0.45 <= r <= 2.5
       const checkPy = `python3 -c "
 from PIL import Image
 im = Image.open('${rawPath}')
 w, h = im.size
-if w < 300 or h < 200:
+if w < 350 or h < 220:
+    exit(1)
+ratio = w / h
+# Bỏ qua banner quảng cáo ngang dài (ratio > 2.5) hoặc dải dọc (ratio < 0.45)
+if ratio < 0.45 or ratio > 2.5:
     exit(1)
 "`;
       try {
         execSync(checkPy);
         rawDownloaded.push(rawPath);
-        console.log(`  [Ảnh ${rawDownloaded.length}] Tải thành công ảnh sắc nét: ${imgUrl.slice(0, 70)}...`);
+        console.log(`  [Ảnh báo chí ${rawDownloaded.length}] Tải thành công ảnh sắc nét: ${imgUrl.slice(0, 75)}...`);
       } catch (e) {
         if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
       }
-    } catch (e) {
-      // Bỏ qua lỗi kết nối từng ảnh
-    }
+    } catch (e) {}
   }
 
-  // Nếu vẫn chưa tìm được ảnh nào từ trang web, thực hiện tìm kiếm ảnh thực tế từ báo chí
+  // Lần 2: CHỈ KHI bài báo không có ảnh nào (0 ảnh) hoặc người dùng gửi text, mới kích hoạt tìm kiếm ảnh báo chí
   if (rawDownloaded.length === 0 && fallbackQuery) {
-    console.log(`🔍 Chưa có ảnh đạt chuẩn, đang kích hoạt bộ tìm kiếm ảnh báo chí chuyên sâu cho: "${fallbackQuery.slice(0, 60)}"...`);
+    console.log(`🔍 Bài viết không có ảnh sẵn, đang tìm kiếm ảnh báo chí thực tế cho: "${fallbackQuery.slice(0, 60)}"...`);
     const searched = await searchNewsImages(fallbackQuery);
     for (let i = 0; i < searched.length; i++) {
       if (rawDownloaded.length >= 4) break;
@@ -415,20 +466,23 @@ if w < 300 or h < 200:
         });
         if (!res.ok) continue;
         const arrayBuffer = await res.arrayBuffer();
-        if (arrayBuffer.byteLength < 10240) continue;
+        if (arrayBuffer.byteLength < 15360) continue;
         fs.writeFileSync(rawPath, Buffer.from(arrayBuffer));
 
         const checkPy = `python3 -c "
 from PIL import Image
 im = Image.open('${rawPath}')
 w, h = im.size
-if w < 300 or h < 200:
+if w < 350 or h < 220:
+    exit(1)
+ratio = w / h
+if ratio < 0.45 or ratio > 2.5:
     exit(1)
 "`;
         try {
           execSync(checkPy);
           rawDownloaded.push(rawPath);
-          console.log(`  [Ảnh tìm kiếm ${rawDownloaded.length}] Tải thành công ảnh báo chí: ${imgUrl.slice(0, 70)}...`);
+          console.log(`  [Ảnh tìm kiếm ${rawDownloaded.length}] Tải thành công ảnh báo chí: ${imgUrl.slice(0, 75)}...`);
         } catch (e) {
           if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
         }
@@ -438,90 +492,94 @@ if w < 300 or h < 200:
 
   const savedImages = [];
 
-  // Nếu tải được ảnh chất lượng cao
+  // Tạo trọn bộ 4 ảnh crop 1080x1040 CHỈ TỪ CÁC ẢNH CHÍNH THỨC CỦA BÀI BÁO (Không dùng bất kỳ ảnh ngoài nào!)
   if (rawDownloaded.length > 0) {
-    // Nếu chỉ có 1 ảnh, tạo 4 góc crop khác nhau (Toàn cảnh, Cận cảnh, Zoom chi tiết)
-    if (rawDownloaded.length === 1) {
-      const singleRaw = rawDownloaded[0];
-      const cropPy = `python3 -c "
+    const pyScript = `python3 -c "
 from PIL import Image
-im = Image.open('${singleRaw}')
-w, h = im.size
+import os
+
 target_w, target_h = 1080, 1040
 target_ratio = target_w / target_h
 
-# Crop 0: Center standard
-current_ratio = w / h
-if current_ratio > target_ratio:
-    nw = int(h * target_ratio)
-    left = (w - nw) // 2
-    c0 = im.crop((left, 0, left + nw, h))
+def make_center_crop(im):
+    w, h = im.size
+    current_ratio = w / h
+    if current_ratio > target_ratio:
+        nw = int(h * target_ratio)
+        left = (w - nw) // 2
+        c = im.crop((left, 0, left + nw, h))
+    else:
+        nh = int(w / target_ratio)
+        top = (h - nh) // 2
+        c = im.crop((0, top, w, top + nh))
+    return c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB')
+
+def make_zoom_crop(base, zoom_factor=0.85):
+    margin_w = int(target_w * (1 - zoom_factor) / 2)
+    margin_h = int(target_h * (1 - zoom_factor) / 2)
+    z = base.crop((margin_w, margin_h, target_w - margin_w, target_h - margin_h))
+    return z.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+def make_upper_crop(base):
+    u = base.crop((0, 0, target_w, int(target_h * 0.85)))
+    return u.resize((target_w, target_h), Image.Resampling.LANCZOS)
+
+out_dir = '${outDir}'
+raw_count = ${rawDownloaded.length}
+
+if raw_count == 1:
+    im0 = Image.open('${rawDownloaded[0]}')
+    b0 = make_center_crop(im0)
+    b0.save(os.path.join(out_dir, 'crop_0.jpg'), quality=95)
+    make_zoom_crop(b0, 0.85).save(os.path.join(out_dir, 'crop_1.jpg'), quality=95)
+    make_zoom_crop(b0, 0.75).save(os.path.join(out_dir, 'crop_2.jpg'), quality=95)
+    make_upper_crop(b0).save(os.path.join(out_dir, 'crop_3.jpg'), quality=95)
+
+elif raw_count == 2:
+    im0 = Image.open('${rawDownloaded[0]}')
+    im1 = Image.open('${rawDownloaded[1]}')
+    b0 = make_center_crop(im0)
+    b1 = make_center_crop(im1)
+    b0.save(os.path.join(out_dir, 'crop_0.jpg'), quality=95)
+    b1.save(os.path.join(out_dir, 'crop_1.jpg'), quality=95)
+    make_zoom_crop(b0, 0.85).save(os.path.join(out_dir, 'crop_2.jpg'), quality=95)
+    make_zoom_crop(b1, 0.85).save(os.path.join(out_dir, 'crop_3.jpg'), quality=95)
+
+elif raw_count == 3:
+    im0 = Image.open('${rawDownloaded[0]}')
+    im1 = Image.open('${rawDownloaded[1]}')
+    im2 = Image.open('${rawDownloaded[2]}')
+    b0 = make_center_crop(im0)
+    b1 = make_center_crop(im1)
+    b2 = make_center_crop(im2)
+    b0.save(os.path.join(out_dir, 'crop_0.jpg'), quality=95)
+    b1.save(os.path.join(out_dir, 'crop_1.jpg'), quality=95)
+    b2.save(os.path.join(out_dir, 'crop_2.jpg'), quality=95)
+    make_zoom_crop(b0, 0.85).save(os.path.join(out_dir, 'crop_3.jpg'), quality=95)
+
 else:
-    nh = int(w / target_ratio)
-    top = (h - nh) // 2
-    c0 = im.crop((0, top, w, top + nh))
-
-# Base 1080x1040 chuẩn nét
-base = c0.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB')
-base.save('${path.join(outDir, 'crop_0.jpg')}', quality=95)
-
-# Crop 1: Zoom cận cảnh nhẹ (85%)
-c1 = base.crop((int(target_w * 0.075), int(target_h * 0.075), int(target_w * 0.925), int(target_h * 0.925)))
-c1.resize((target_w, target_h), Image.Resampling.LANCZOS).save('${path.join(outDir, 'crop_1.jpg')}', quality=95)
-
-# Crop 2: Zoom trọng tâm (75%)
-c2 = base.crop((int(target_w * 0.125), int(target_h * 0.125), int(target_w * 0.875), int(target_h * 0.875)))
-c2.resize((target_w, target_h), Image.Resampling.LANCZOS).save('${path.join(outDir, 'crop_2.jpg')}', quality=95)
-
-# Crop 3: Cận cảnh phía trên (tập trung vào nhân vật/chi tiết chính)
-c3 = base.crop((0, 0, target_w, int(target_h * 0.88)))
-c3.resize((target_w, target_h), Image.Resampling.LANCZOS).save('${path.join(outDir, 'crop_3.jpg')}', quality=95)
+    for i in range(4):
+        raw_p = '${path.join(outDir, 'raw_')}' + str(i) + '.jpg'
+        b = make_center_crop(Image.open(raw_p))
+        b.save(os.path.join(out_dir, f'crop_{i}.jpg'), quality=95)
 "`;
-      try {
-        execSync(cropPy);
-        savedImages.push('crop_0.jpg', 'crop_1.jpg', 'crop_2.jpg', 'crop_3.jpg');
-      } catch (e) {
-        console.error('Lỗi multi-crop single image:', e.message);
-      }
-    } else {
-      // Có từ 2 ảnh trở lên: crop từng ảnh
-      for (let i = 0; i < rawDownloaded.length; i++) {
-        const rawPath = rawDownloaded[i];
-        const cropPath = path.join(outDir, `crop_${i}.jpg`);
-        const pyCmd = `python3 -c "
-from PIL import Image
-im = Image.open('${rawPath}')
-w, h = im.size
-target_w, target_h = 1080, 1040
-target_ratio = target_w / target_h
-current_ratio = w / h
-if current_ratio > target_ratio:
-    new_w = int(h * target_ratio)
-    left = (w - new_w) // 2
-    im_c = im.crop((left, 0, left + new_w, h))
-else:
-    new_h = int(w / target_ratio)
-    top = (h - new_h) // 2
-    im_c = im.crop((0, top, w, top + new_h))
-im_c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB').save('${cropPath}', quality=95)
-"`;
-        try {
-          execSync(pyCmd);
-          if (fs.existsSync(cropPath)) savedImages.push(`crop_${i}.jpg`);
-        } catch (e) {
-          console.warn(`Lỗi crop ảnh ${i}:`, e.message);
-        }
-      }
+    try {
+      execSync(pyScript);
+      savedImages.push('crop_0.jpg', 'crop_1.jpg', 'crop_2.jpg', 'crop_3.jpg');
+    } catch (e) {
+      console.error('Lỗi crop ảnh bài báo:', e.message);
     }
   }
 
-  // Fallback to clean default studio news background CỰC KỲ HIẾM KHI XẢY RA
+  // Fallback cực đoan: Nếu không có bất kỳ ảnh nào
   if (savedImages.length === 0) {
     const fallbackSource = path.join(ROOT, 'public/assets/news/default_news_bg.jpg');
-    const fallbackDest = path.join(outDir, 'crop_0.jpg');
-    if (fs.existsSync(fallbackSource)) {
-      fs.copyFileSync(fallbackSource, fallbackDest);
-      savedImages.push('crop_0.jpg');
+    for (let i = 0; i < 4; i++) {
+      const cropPath = path.join(outDir, `crop_${i}.jpg`);
+      if (fs.existsSync(fallbackSource)) {
+        fs.copyFileSync(fallbackSource, cropPath);
+      }
+      savedImages.push(`crop_${i}.jpg`);
     }
   }
 
