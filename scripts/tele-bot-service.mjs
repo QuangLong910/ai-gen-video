@@ -432,11 +432,20 @@ im_c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB').save(
 }
 
 // ─── AI Script Generation with Gemini ───────────────────────────────────────
-async function generateVideoScript(articleData) {
+async function generateVideoScript(articleData, targetDuration = 38) {
   if (!ai) throw new Error('GEMINI_API_KEY chưa được cấu hình');
 
+  let lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, tổng số từ khoảng 140 - 160 từ tiếng Việt (tương đương 35 - 38 giây đọc).';
+  if (targetDuration <= 32) {
+    lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, cực kỳ ngắn gọn, cô đọng, tổng số từ khoảng 95 - 110 từ tiếng Việt (tương đương 25 - 30 giây đọc).';
+  } else if (targetDuration >= 42 && targetDuration <= 50) {
+    lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, chi tiết rõ ràng, đầy đủ, tổng số từ khoảng 165 - 185 từ tiếng Việt (tương đương 42 - 47 giây đọc).';
+  } else if (targetDuration > 50) {
+    lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, phân tích sâu và kỹ lưỡng, tổng số từ khoảng 210 - 240 từ tiếng Việt (tương đương 55 - 60 giây đọc).';
+  }
+
   const prompt = `Bạn là biên tập viên tin tức hàng đầu của kênh mạng xã hội "HÓNG HỚT 24/7" (TikTok, Reels, Shorts).
-Hãy viết kịch bản video ngắn (35 - 38 giây) từ bài báo sau đây.
+Hãy viết kịch bản video ngắn (khoảng ${targetDuration} giây) từ bài báo sau đây.
 
 THÔNG TIN BÀI BÁO:
 - Tiêu đề: ${articleData.title}
@@ -447,7 +456,7 @@ ${articleData.content}
 CÁC NGUYÊN TẮC BẮT BUỘC (QUAN TRỌNG NHẤT):
 1. PHONETIC VOICE: Khi nhắc đến tên kênh, bắt buộc viết là "Hóng Hớt hai tư trên bảy" (tuyệt đối không viết là 24/7 hay hai tư gạch bảy).
 2. 3-GIÂY ĐẦU TIÊN (HOOK MỞ ĐẦU): Câu đầu tiên của Cảnh 1 BẮT BUỘC phải cài từ ngữ giật gân, khẩn cấp (ví dụ: "Tin cực nóng!", "Tin khẩn cấp!", "Biến căng vừa nổ ra!", "Chấn động!").
-3. THỜI LƯỢNG: Đúng 4 cảnh, tổng số từ khoảng 140 - 160 từ tiếng Việt (tương đương 35 - 38 giây đọc).
+${lengthReq}
 4. KHUNG HÌNH (TIÊU ĐỀ CĂN GIỮA TRÊN ẢNH):
    - title: Tiêu đề in hoa, ngắn gọn, giật gân, tối đa 5-7 từ.
    - subtitle: 1 câu tóm tắt nội dung cảnh đó (khoảng 10-14 từ).
@@ -536,15 +545,28 @@ TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
 
 // ─── Automated End-to-End Pipeline ──────────────────────────────────────────
 let isProcessingJob = false;
+let lastArticleUrl = '';
+let lastSlug = '';
 
-async function executeVideoPipeline(url, replyMessageId) {
+async function executeVideoPipeline(url, replyMessageId, options = {}) {
   if (isProcessingJob) {
-    await sendMessage('⚠️ <b>Hệ thống đang render một video khác!</b> Vui lòng đợi trong giây lát rồi gửi lại nhé.', replyMessageId);
+    await sendMessage('⚠️ <b>Hệ thống đang render một video khác!</b>\nNếu bị treo lâu, bạn hãy gửi tin nhắn <code>reset</code> để gỡ treo ngay lập tức nhé.', replyMessageId);
     return;
   }
 
   isProcessingJob = true;
+  lastArticleUrl = url;
+  const targetDuration = options.targetDuration || 38;
   const startTime = Date.now();
+
+  // Watchdog timer: tự động hủy sau 4 phút để chống treo vĩnh viễn
+  const watchdog = setTimeout(async () => {
+    if (isProcessingJob) {
+      console.warn('⚠️ [Watchdog] Quá 4 phút! Tự động gỡ treo hệ thống.');
+      isProcessingJob = false;
+      await sendMessage('⚠️ <b>Tiến trình xử lý quá 4 phút</b> nên đã tự động ngắt để bảo vệ hệ thống. Bạn có thể gửi lại lệnh ngay bây giờ nhé!', replyMessageId);
+    }
+  }, 240000);
 
   try {
     // Tạo slug
@@ -557,8 +579,10 @@ async function executeVideoPipeline(url, replyMessageId) {
       .slice(0, 30)
       .toLowerCase() || 'hot-news';
     const slug = `${datePrefix}-${cleanSlug}-${Date.now().toString().slice(-4)}`;
+    lastSlug = slug;
 
-    await sendMessage(`🎬 <b>Bắt đầu tạo video tự động!</b>\n📰 <b>Nguồn:</b> <code>${url}</code>\n🆔 <b>Slug:</b> <code>${slug}</code>\n\n⏳ <i>Bước 1/5: Đang đọc nội dung bài báo & tải ảnh phóng viên...</i>`, replyMessageId);
+    const timeNotice = targetDuration !== 38 ? ` (Thời lượng mục tiêu: ~${targetDuration}s)` : '';
+    await sendMessage(`🎬 <b>Bắt đầu tạo video tự động${timeNotice}!</b>\n📰 <b>Nguồn:</b> <code>${url}</code>\n🆔 <b>Slug:</b> <code>${slug}</code>\n\n⏳ <i>Bước 1/5: Đang đọc nội dung bài báo & tải ảnh phóng viên...</i>`, replyMessageId);
     await sendChatAction('typing');
 
     // 1. Cào bài viết
@@ -571,10 +595,10 @@ async function executeVideoPipeline(url, replyMessageId) {
     console.log(`[${slug}] Đã tải ${savedImages.length} ảnh báo chí thực tế.`);
 
     // 2. Viết kịch bản bằng Gemini AI
-    await sendMessage(`✍️ <i>Bước 2/5: AI đang biên tập kịch bản 4 cảnh giật gân chuẩn Hóng Hớt 24/7...</i>`, replyMessageId);
+    await sendMessage(`✍️ <i>Bước 2/5: AI đang biên tập kịch bản 4 cảnh giật gân chuẩn Hóng Hớt 24/7 (khoảng ${targetDuration}s)...</i>`, replyMessageId);
     await sendChatAction('typing');
 
-    const scriptData = await generateVideoScript(articleData);
+    const scriptData = await generateVideoScript(articleData, targetDuration);
     const scriptDir = path.join(ROOT, `videos/${slug}/script`);
     fs.mkdirSync(scriptDir, { recursive: true });
 
@@ -786,7 +810,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
     await sendChatAction('upload_video');
 
     const outputPath = path.join(ROOT, `videos/${slug}/output/video.mp4`);
-    execSync(`npx remotion render src/Root.tsx SocialVideo "${outputPath}" --codec=h264`, {
+    execSync(`npx remotion render src/Root.tsx SocialVideo "${outputPath}" --codec=h264 --concurrency=2 --timeout=60000`, {
       cwd: ROOT,
       stdio: 'inherit',
     });
@@ -825,6 +849,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
     console.error('❌ Lỗi quy trình tạo video:', error);
     await sendMessage(`❌ <b>Lỗi trong quá trình tạo video:</b>\n<code>${error.message}</code>`, replyMessageId);
   } finally {
+    clearTimeout(watchdog);
     isProcessingJob = false;
   }
 }
@@ -854,36 +879,86 @@ async function pollTelegramUpdates() {
 
         const text = msg.text.trim();
         const msgId = msg.message_id;
+        const lower = text.toLowerCase();
         console.log(`[Telegram] Nhận lệnh từ Chat ID: "${text}"`);
 
-        // Xử lý các lệnh
+        // 1. Lệnh khẩn cấp gỡ treo hệ thống
+        if (lower === 'reset' || lower === 'hủy' || lower === 'huy' || lower === 'gỡ treo' || lower === 'go treo' || lower === '/cancel') {
+          isProcessingJob = false;
+          await sendMessage('🔄 <b>Đã gỡ treo hệ thống thành công!</b> Bạn có thể gửi link mới ngay bây giờ.', msgId);
+          continue;
+        }
+
+        // 2. Trợ giúp & Bắt đầu
         if (text === '/start' || text === '/help') {
           const helpText = `👋 <b>Chào mừng bạn đến với Hóng Hớt 24/7 AI Bot!</b>\n\n` +
-            `🎯 <b>CÁC TÍNH NĂNG CHÍNH:</b>\n\n` +
-            `1️⃣ <b>Tự động làm video từ link báo:</b>\n` +
-            `👉 Bạn chỉ cần <b>gửi trực tiếp link bài báo</b> (Dân Trí, Tiền Phong, Tuổi Trẻ, VnExpress, Kenh14...).\n` +
-            `Bot sẽ tự động đọc báo, lập kịch bản, thu âm, làm phụ đề, ghép ảnh và gửi video .mp4 hoàn chỉnh về đây!\n\n` +
-            `2️⃣ <b>Săn tin nóng & xu hướng mới:</b>\n` +
-            `👉 Gõ lệnh <code>/trend</code> hoặc <code>/tin</code> để bot quét và gửi ngay danh sách tin hot TikTok/FB & Google Search.\n\n` +
-            `3️⃣ <b>Kiểm tra tình trạng máy:</b>\n` +
-            `👉 Gõ lệnh <code>/status</code>`;
+            `🎯 <b>CÁC LỆNH BẠN CÓ THỂ DÙNG TRÊN ĐIỆN THOẠI:</b>\n\n` +
+            `1️⃣ <b>Tạo video tự động:</b>\n` +
+            `👉 Gửi trực tiếp <b>link bài báo</b> (Tuổi Trẻ, Dân Trí, VnExpress, Tiền Phong...).\n` +
+            `👉 Có thể kèm thời lượng mong muốn: <code>&lt;link&gt; 45s</code> hoặc <code>&lt;link&gt; 30s</code>.\n\n` +
+            `2️⃣ <b>Yêu cầu làm lại video:</b>\n` +
+            `👉 <code>làm lại 45s</code> hoặc <code>làm lại 30s</code>: Sẽ tự động làm lại bài báo gần nhất với độ dài bạn muốn!\n` +
+            `👉 <code>đổi ảnh</code>: Tự động đổi góc ảnh và phối hợp ảnh mới cho bài báo gần nhất.\n\n` +
+            `3️⃣ <b>Xử lý khi bị treo:</b>\n` +
+            `👉 Gõ <code>reset</code> hoặc <code>hủy</code>: Lập tức gỡ treo và giải phóng máy để nhận lệnh mới.\n\n` +
+            `4️⃣ <b>Săn tin hot & Xu hướng:</b>\n` +
+            `👉 Gõ <code>/trend</code> hoặc <code>/tin</code>\n` +
+            `👉 Gõ <code>/status</code> để xem tình trạng hoạt động.`;
           await sendMessage(helpText, msgId);
-        } else if (text === '/trend' || text === '/tin') {
+          continue;
+        }
+
+        // 3. Quét tin hot
+        if (text === '/trend' || text === '/tin') {
           await sendMessage('🔍 <i>Đang quét tin hot mới nhất từ TikTok, Facebook và Google Trends...</i>', msgId);
           await runScan(true);
-        } else if (text === '/status') {
+          continue;
+        }
+
+        // 4. Kiểm tra trạng thái
+        if (text === '/status') {
           const uptimeMinutes = Math.round(process.uptime() / 60);
-          await sendMessage(`🟢 <b>Hệ thống đang hoạt động tốt!</b>\n⏱ Thời gian chạy: ${uptimeMinutes} phút\n💻 Node: ${process.version}\n🎬 Kênh video: HÓNG HỚT 24/7`, msgId);
-        } else {
-          // Kiểm tra URL trong tin nhắn
-          const urlMatch = text.match(/https?:\/\/[^\s]+/);
-          if (urlMatch) {
-            const targetUrl = urlMatch[0];
-            // Chạy pipeline nền không chặn polling
-            executeVideoPipeline(targetUrl, msgId);
-          } else {
-            await sendMessage('💡 <i>Gửi link bài báo vào đây để tự động tạo video, hoặc gõ /trend để xem tin hot nhé!</i>', msgId);
+          await sendMessage(`🟢 <b>Hệ thống đang hoạt động tốt!</b>\n⏱ Thời gian chạy: ${uptimeMinutes} phút\n🎬 Kênh: HÓNG HỚT 24/7\n📰 Bài gần nhất: <code>${lastArticleUrl || 'Chưa có'}</code>`, msgId);
+          continue;
+        }
+
+        // 5. Làm lại theo thời lượng (ví dụ: "làm lại 45s", "làm 30 giây", "rút ngắn 30s", "45s")
+        const durationOnlyMatch = text.match(/^(?:làm lại|sửa lại|chỉnh|rút ngắn|kéo dài)?\s*(\d{2})\s*(?:s|giây|sec)$/i);
+        if (durationOnlyMatch && !text.includes('http')) {
+          if (!lastArticleUrl) {
+            await sendMessage('💡 <i>Chưa có bài báo gần nhất trong bộ nhớ. Bạn hãy gửi link bài báo kèm thời lượng nhé (Ví dụ: &lt;link&gt; 45s)!</i>', msgId);
+            continue;
           }
+          const sec = parseInt(durationOnlyMatch[1], 10);
+          await sendMessage(`🔄 <b>Đang làm lại video từ bài báo gần nhất với thời lượng ~${sec} giây...</b>`, msgId);
+          executeVideoPipeline(lastArticleUrl, msgId, { targetDuration: sec });
+          continue;
+        }
+
+        // 6. Đổi ảnh ("đổi ảnh", "thay ảnh", "sửa ảnh")
+        if ((lower.includes('đổi ảnh') || lower.includes('thay ảnh') || lower.includes('sửa ảnh')) && !text.includes('http')) {
+          if (!lastArticleUrl) {
+            await sendMessage('💡 <i>Chưa có bài báo gần nhất trong bộ nhớ. Bạn hãy gửi link bài báo nhé!</i>', msgId);
+            continue;
+          }
+          await sendMessage('🔄 <b>Đang làm lại video bài báo gần nhất với góc crop và phối hợp ảnh mới...</b>', msgId);
+          executeVideoPipeline(lastArticleUrl, msgId, { refreshImages: true });
+          continue;
+        }
+
+        // 7. Nhận diện link bài báo (có thể kèm thời lượng, ví dụ: "https://... 45s")
+        const urlMatch = text.match(/https?:\/\/[^\s]+/);
+        if (urlMatch) {
+          const targetUrl = urlMatch[0];
+          lastArticleUrl = targetUrl;
+          let targetSec = 38;
+          const inlineSecMatch = text.match(/(\d{2})\s*(?:s|giây|sec)/i);
+          if (inlineSecMatch) {
+            targetSec = parseInt(inlineSecMatch[1], 10);
+          }
+          executeVideoPipeline(targetUrl, msgId, { targetDuration: targetSec });
+        } else {
+          await sendMessage('💡 <i>Gửi link bài báo vào đây để tạo video (kèm 30s hoặc 45s nếu muốn), hoặc gõ "reset" nếu muốn gỡ treo nhé!</i>', msgId);
         }
       }
     }
