@@ -1,9 +1,9 @@
-export const SCENE1_DUR = 257;
-export const SCENE2_DUR = 257;
-export const SCENE3_DUR = 257;
-export const SCENE4_DUR = 259;
+export const SCENE1_DUR = 202;
+export const SCENE2_DUR = 202;
+export const SCENE3_DUR = 202;
+export const SCENE4_DUR = 203;
 
-export const TOTAL_FRAMES = 1030;
+export const TOTAL_FRAMES = 809;
 
 export const COLORS = {
   primary: '#FACC15',

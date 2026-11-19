@@ -12,7 +12,7 @@ export const RemotionRoot: React.FC = () => {
       width={1080}
       height={1920}
       defaultProps={{
-        slug: '2026-11-19-de-xuat-khong-phat-xe-di-qua-v-9810',
+        slug: '2026-11-19-video-bong-da-u17-phap-u17-hai-1535',
         showSubtitles: false,
       }}
     />

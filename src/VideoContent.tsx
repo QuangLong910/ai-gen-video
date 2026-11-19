@@ -13,7 +13,7 @@ export interface VideoContentProps {
 }
 
 export const VideoContent: React.FC<VideoContentProps> = ({
-  slug = '2026-11-19-de-xuat-khong-phat-xe-di-qua-v-9810',
+  slug = '2026-11-19-video-bong-da-u17-phap-u17-hai-1535',
   showSubtitles = false,
 }) => {
   const transitionTiming = linearTiming({durationInFrames: 15});
@@ -30,7 +30,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
 
   return (
     <div style={{flex: 1, backgroundColor: '#000000', position: 'relative', width: 1080, height: 1920}}>
-      <Audio src={staticFile('2026-11-19-de-xuat-khong-phat-xe-di-qua-v-9810/voice.mp3')} volume={1.0} />
+      <Audio src={staticFile('2026-11-19-video-bong-da-u17-phap-u17-hai-1535/voice.mp3')} volume={1.0} />
       <Audio src={staticFile('assets/news/music/the_mountain-news-news-music.mp3')} volume={0.10} loop />
 
       <TransitionSeries>
@@ -38,10 +38,10 @@ export const VideoContent: React.FC<VideoContentProps> = ({
           <SocialContentScene
             slug={slug}
             images={["crop_0.jpg","crop_1.jpg"]}
-            title="CHẤN ĐỘNG QUY ĐỊNH ĐÈN ĐỎ"
-            subtitle="Đề xuất mới nhất về lỗi vượt đèn đỏ và đèn vàng từ cơ quan chức năng"
-            source="THEO: BÁO TUỔI TRẺ"
-            date="19/11/2026"
+            title="U17 PHÁP THỊ UY SỨC MẠNH"
+            subtitle="U17 Pháp thể hiện sức mạnh áp đảo tại U17 World Cup"
+            source="THEO: 24H.COM.VN"
+            date="20/11/2026"
             keepBanner={true}
             channelName="HÓNG HỚT 24/7"
             watermarkSrc="watermark.png"
@@ -56,14 +56,14 @@ export const VideoContent: React.FC<VideoContentProps> = ({
           <SocialContentScene
             slug={slug}
             images={["crop_2.jpg","crop_3.jpg"]}
-            title="ĐÈN VÀNG KHÔNG BỊ PHẠT"
-            subtitle="Xe đi qua vạch dừng khi đèn vàng sẽ không còn bị xử phạt"
-            source="THEO: BÁO TUỔI TRẺ"
-            date="19/11/2026"
+            title="MERRIFIELD TỎA SÁNG RỰC RỠ"
+            subtitle="Merrifield lập cú đúp đưa U17 Pháp vươn lên dẫn trước"
+            source="THEO: 24H.COM.VN"
+            date="20/11/2026"
             keepBanner={true}
             channelName="HÓNG HỚT 24/7"
             watermarkSrc="watermark.png"
-            categoryTag="💡 TIN VUI TÀI XẾ"
+            categoryTag="⚡ DIỄN BIẾN MỚI"
             layoutMode="classic"
             panDirection="right-to-left"
           />
@@ -74,14 +74,14 @@ export const VideoContent: React.FC<VideoContentProps> = ({
           <SocialContentScene
             slug={slug}
             images={["crop_2.jpg","crop_0.jpg"]}
-            title="TÁI PHẠM PHẠT GẤP BA"
-            subtitle="Vượt đèn đỏ nhiều lần sẽ bị phạt tiền lũy kế và trừ điểm giấy phép lái xe"
-            source="THEO: BÁO TUỔI TRẺ"
-            date="19/11/2026"
+            title="ĐẲNG CẤP ĐỘI TRẺ"
+            subtitle="Noha Tiehi ghi bàn nâng tỷ số lên ba không cho U17 Pháp"
+            source="THEO: 24H.COM.VN"
+            date="20/11/2026"
             keepBanner={true}
             channelName="HÓNG HỚT 24/7"
             watermarkSrc="watermark.png"
-            categoryTag="⚡ XỬ LÝ NẶNG TAY"
+            categoryTag="📌 CHI TIẾT ĐẮT GIÁ"
             layoutMode="classic"
             panDirection="left-to-right"
           />
@@ -92,10 +92,10 @@ export const VideoContent: React.FC<VideoContentProps> = ({
           <SocialContentScene
             slug={slug}
             images={["crop_3.jpg","crop_1.jpg"]}
-            title="PHẠT NGUỘI QUA CAMERA"
-            subtitle="Hệ thống camera giám sát ghi nhận toàn bộ vi phạm để xử lý phạt nguội"
-            source="THEO: BÁO TUỔI TRẺ"
-            date="19/11/2026"
+            title="CHIẾN THẮNG THUYẾT PHỤC"
+            subtitle="Chung cuộc U17 Pháp đánh bại U17 Haiti với tỷ số ba một"
+            source="THEO: 24H.COM.VN"
+            date="20/11/2026"
             keepBanner={true}
             channelName="HÓNG HỚT 24/7"
             watermarkSrc="watermark.png"
