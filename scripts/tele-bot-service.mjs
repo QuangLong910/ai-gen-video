@@ -686,7 +686,41 @@ TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
   }
 
   if (!response || !response.text) {
-    throw lastError || new Error('Tất cả các model Gemini đều đang bận, vui lòng thử lại sau giây lát');
+    if (process.env.GROQ_API_KEY) {
+      console.log('🔄 Đang kích hoạt Groq AI làm dự phòng sinh kịch bản...');
+      try {
+        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'openai/gpt-oss-120b',
+            messages: [
+              {
+                role: 'system',
+                content: 'Bạn là biên tập viên tin tức cho kênh Hóng Hớt 24/7. Trả về định dạng JSON hợp lệ duy nhất, không dùng markdown ```json hay giải thích.',
+              },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.6,
+          }),
+        });
+        const groqData = await groqRes.json();
+        const groqText = groqData.choices?.[0]?.message?.content;
+        if (groqText) {
+          response = { text: groqText };
+          console.log('✅ Tạo kịch bản thành công bằng Groq AI!');
+        }
+      } catch (gErr) {
+        console.warn('Lỗi Groq fallback:', gErr.message);
+      }
+    }
+  }
+
+  if (!response || !response.text) {
+    throw lastError || new Error('Tất cả các model AI đều đang bận, vui lòng thử lại sau giây lát');
   }
 
   const rawJson = response.text
