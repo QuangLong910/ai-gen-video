@@ -491,10 +491,39 @@ TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
   "hashtags": ["#honghot247", "#tinnong", "#phapluat", "#vietnam", "#tintuc"]
 }`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.5-flash-lite',
-    contents: prompt,
-  });
+  const modelsToTry = [
+    'gemini-flash-lite-latest',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.7-flash',
+    'gemini-3.8-flash',
+    'gemini-pro-latest',
+  ];
+
+  let response = null;
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      console.log(`[Script] Đang tạo kịch bản với model: ${modelName}...`);
+      response = await ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+      });
+      if (response && response.text) {
+        console.log(`[Script] Tạo kịch bản thành công với model: ${modelName}!`);
+        break;
+      }
+    } catch (err) {
+      console.warn(`[Script] Model ${modelName} gặp lỗi/bận:`, err.message.slice(0, 100));
+      lastError = err;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+
+  if (!response || !response.text) {
+    throw lastError || new Error('Tất cả các model Gemini đều đang bận, vui lòng thử lại sau giây lát');
+  }
 
   const rawJson = response.text
     .replace(/^```json\s*/i, '')
