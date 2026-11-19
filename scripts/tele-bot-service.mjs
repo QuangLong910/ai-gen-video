@@ -367,18 +367,22 @@ else:
     nh = int(w / target_ratio)
     top = (h - nh) // 2
     c0 = im.crop((0, top, w, top + nh))
-c0.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB').save('${path.join(outDir, 'crop_0.jpg')}', quality=95)
 
-# Crop 1: Zoom left / upper
-c1 = c0.crop((0, 0, int(target_w * 0.85), int(target_h * 0.85)))
-c1.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB').save('${path.join(outDir, 'crop_1.jpg')}', quality=95)
+# Base 1080x1040 chuẩn nét
+base = c0.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB')
+base.save('${path.join(outDir, 'crop_0.jpg')}', quality=95)
 
-# Crop 2: Zoom center tight
-c2 = c0.crop((int(target_w * 0.1), int(target_h * 0.1), int(target_w * 0.9), int(target_h * 0.9)))
-c2.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB').save('${path.join(outDir, 'crop_2.jpg')}', quality=95)
+# Crop 1: Zoom cận cảnh nhẹ (85%)
+c1 = base.crop((int(target_w * 0.075), int(target_h * 0.075), int(target_w * 0.925), int(target_h * 0.925)))
+c1.resize((target_w, target_h), Image.Resampling.LANCZOS).save('${path.join(outDir, 'crop_1.jpg')}', quality=95)
 
-# Crop 3: Fitted wide with clean dark framing
-c0.save('${path.join(outDir, 'crop_3.jpg')}', quality=95)
+# Crop 2: Zoom trọng tâm (75%)
+c2 = base.crop((int(target_w * 0.125), int(target_h * 0.125), int(target_w * 0.875), int(target_h * 0.875)))
+c2.resize((target_w, target_h), Image.Resampling.LANCZOS).save('${path.join(outDir, 'crop_2.jpg')}', quality=95)
+
+# Crop 3: Cận cảnh phía trên (tập trung vào nhân vật/chi tiết chính)
+c3 = base.crop((0, 0, target_w, int(target_h * 0.88)))
+c3.resize((target_w, target_h), Image.Resampling.LANCZOS).save('${path.join(outDir, 'crop_3.jpg')}', quality=95)
 "`;
       try {
         execSync(cropPy);

@@ -100,18 +100,36 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
             position: 'absolute',
             top: 0,
             left: 0,
-            right: 0,
+            width: 1080,
             height: 1040,
             overflow: 'hidden',
             zIndex: 10,
           }}
         >
+          {/* Lớp nền blur dự phòng bao trọn 1080x1040: Chống tuyệt đối lỗi viền đen hoặc ảnh co nhỏ */}
+          {!videoSrc && (
+            <Img
+              src={staticFile(`${slug}/evidence/${currentImage}`)}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 1080,
+                height: 1040,
+                objectFit: 'cover',
+                filter: 'blur(25px) brightness(0.7)',
+                transform: 'scale(1.2)',
+              }}
+            />
+          )}
+
           {videoSrc ? (
             <OffthreadVideo
               src={staticFile(`${slug}/${videoSrc}`)}
               startFrom={startFrom}
               muted
               style={{
+                position: 'relative',
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
@@ -122,8 +140,9 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
             <Img
               src={staticFile(`${slug}/evidence/${currentImage}`)}
               style={{
-                width: '100%',
-                height: '100%',
+                position: 'relative',
+                width: 1080,
+                height: 1040,
                 objectFit: 'cover',
                 transform: `scale(${photoScale}) translate(${panX}px, ${panY}px)`,
               }}
