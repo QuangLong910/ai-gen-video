@@ -7,6 +7,11 @@ on:
         description: 'Dán link bài báo (Tuổi Trẻ, Dân Trí, VnExpress, Tiền Phong...):'
         required: true
         type: string
+      target_duration:
+        description: 'Thời lượng video mong muốn (ví dụ: 30s hoặc 45s, để trống = tự động ~38s):'
+        required: false
+        default: '38s'
+        type: string
 
 jobs:
   generate-video:
@@ -32,22 +37,11 @@ jobs:
       - name: 📦 Cài đặt Pillow cho Python
         run: pip install pillow
 
-      - name: 🎥 Cài đặt FFmpeg & Thư viện Chromium cho Remotion
+      - name: 🎥 Cài đặt FFmpeg & Thư viện Chromium
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            ffmpeg \
-            libnss3 \
-            libdbus-1-3 \
-            libatk1.0-0 \
-            libasound2 \
-            libxrandr2 \
-            libxkbcommon-dev \
-            libxfixes3 \
-            libxcomposite1 \
-            libxdamage1 \
-            libgbm-dev \
-            libatk-bridge2.0-0
+          sudo apt-get install -y ffmpeg
+          npx playwright install-deps chromium || true
 
       - name: 📦 Cài đặt npm dependencies
         run: npm install
@@ -63,4 +57,5 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          node scripts/tele-bot-service.mjs "${{ inputs.article_url }}"
+          node scripts/tele-bot-service.mjs "${{ inputs.article_url }}" "${{ inputs.target_duration }}"
+

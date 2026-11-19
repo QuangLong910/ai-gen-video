@@ -989,8 +989,15 @@ function startPeriodicScanner() {
 // ─── Khởi chạy: Chế độ CLI hoặc Chế độ Bot Daemon ────────────────────────────
 if (process.argv[2] && process.argv[2].startsWith('http')) {
   const targetUrl = process.argv[2];
-  console.log(`[CLI] 🚀 Khởi chạy tạo video trực tiếp cho URL: ${targetUrl}`);
-  executeVideoPipeline(targetUrl, null)
+  let targetSec = 38;
+  if (process.argv[3]) {
+    const parsed = parseInt(process.argv[3].toString().replace(/\D/g, ''), 10);
+    if (!isNaN(parsed) && parsed > 15 && parsed <= 90) {
+      targetSec = parsed;
+    }
+  }
+  console.log(`[CLI] 🚀 Khởi chạy tạo video trực tiếp cho URL: ${targetUrl} (thời lượng: ${targetSec}s)`);
+  executeVideoPipeline(targetUrl, null, { targetDuration: targetSec })
     .then(() => {
       console.log('✅ [CLI] Toàn bộ pipeline đã hoàn tất thành công!');
       process.exit(0);
