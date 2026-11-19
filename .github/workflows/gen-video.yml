@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       article_url:
-        description: 'Dán link bài báo (Tuổi Trẻ, Dân Trí, VnExpress, Tiền Phong...):'
+        description: 'Dán Link bài báo HOẶC dán Đoạn tóm tắt tin tức:'
         required: true
         type: string
       target_duration:

@@ -565,14 +565,14 @@ let isProcessingJob = false;
 let lastArticleUrl = '';
 let lastSlug = '';
 
-async function executeVideoPipeline(url, replyMessageId, options = {}) {
+async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
   if (isProcessingJob) {
     await sendMessage('⚠️ <b>Hệ thống đang render một video khác!</b>\nNếu bị treo lâu, bạn hãy gửi tin nhắn <code>reset</code> để gỡ treo ngay lập tức nhé.', replyMessageId);
     return;
   }
 
   isProcessingJob = true;
-  lastArticleUrl = url;
+  lastArticleUrl = urlOrText;
   const targetDuration = options.targetDuration || 38;
   const startTime = Date.now();
 
@@ -586,30 +586,54 @@ async function executeVideoPipeline(url, replyMessageId, options = {}) {
   }, 240000);
 
   try {
-    // Tạo slug
+    const isUrl = urlOrText.startsWith('http');
     const datePrefix = new Date().toISOString().slice(0, 10);
-    const cleanSlug = url
-      .split('/')
-      .pop()
-      .replace(/\.(htm|html|tpo|epi|epi\?.*)$/, '')
-      .replace(/[^a-zA-Z0-9-]/g, '')
-      .slice(0, 30)
-      .toLowerCase() || 'hot-news';
+    let cleanSlug = 'hot-news';
+
+    if (isUrl) {
+      cleanSlug = urlOrText
+        .split('/')
+        .pop()
+        .replace(/\.(htm|html|tpo|epi|epi\?.*)$/, '')
+        .replace(/[^a-zA-Z0-9-]/g, '')
+        .slice(0, 30)
+        .toLowerCase() || 'hot-news';
+    } else {
+      const firstLine = urlOrText.split('\n')[0].replace(/[^\p{L}\p{N}\s]/gu, '').trim();
+      cleanSlug = firstLine.toLowerCase().replace(/\s+/g, '-').slice(0, 30) || 'hot-news';
+    }
+
     const slug = `${datePrefix}-${cleanSlug}-${Date.now().toString().slice(-4)}`;
     lastSlug = slug;
 
     const timeNotice = targetDuration !== 38 ? ` (Thời lượng mục tiêu: ~${targetDuration}s)` : '';
-    await sendMessage(`🎬 <b>Bắt đầu tạo video tự động${timeNotice}!</b>\n📰 <b>Nguồn:</b> <code>${url}</code>\n🆔 <b>Slug:</b> <code>${slug}</code>\n\n⏳ <i>Bước 1/5: Đang đọc nội dung bài báo & tải ảnh phóng viên...</i>`, replyMessageId);
+    if (isUrl) {
+      await sendMessage(`🎬 <b>Bắt đầu tạo video tự động${timeNotice}!</b>\n📰 <b>Nguồn:</b> <code>${urlOrText}</code>\n🆔 <b>Slug:</b> <code>${slug}</code>\n\n⏳ <i>Bước 1/5: Đang đọc nội dung bài báo & tải ảnh phóng viên...</i>`, replyMessageId);
+    } else {
+      await sendMessage(`🎬 <b>Bắt đầu tạo video từ nội dung bạn gửi${timeNotice}!</b>\n📝 <b>Tóm tắt:</b> <code>${urlOrText.slice(0, 60)}...</code>\n🆔 <b>Slug:</b> <code>${slug}</code>\n\n⏳ <i>Bước 1/5: Đang đọc chi tiết nội dung & phân tích bối cảnh...</i>`, replyMessageId);
+    }
     await sendChatAction('typing');
 
-    // 1. Cào bài viết
-    const articleData = await scrapeArticle(url);
-    console.log(`[${slug}] Đã cào bài viết: ${articleData.title}`);
+    // 1. Lấy nội dung bài viết
+    let articleData;
+    if (isUrl) {
+      articleData = await scrapeArticle(urlOrText);
+    } else {
+      const firstLine = urlOrText.split('\n')[0].trim();
+      articleData = {
+        url: '',
+        domain: 'MẠNG XÃ HỘI',
+        title: firstLine.slice(0, 80),
+        content: urlOrText,
+        imgUrls: [],
+      };
+    }
+    console.log(`[${slug}] Đã tiếp nhận nội dung: ${articleData.title}`);
 
-    // Tải & crop ảnh
+    // Tải & crop ảnh (nếu không có ảnh sẽ dùng nền studio tin tức chuyên nghiệp)
     const evidenceDir = path.join(ROOT, `public/${slug}/evidence`);
     const savedImages = await downloadAndCropImages(articleData.imgUrls, evidenceDir);
-    console.log(`[${slug}] Đã tải ${savedImages.length} ảnh báo chí thực tế.`);
+    console.log(`[${slug}] Đã chuẩn bị ${savedImages.length} ảnh hiển thị.`);
 
     // 2. Viết kịch bản bằng Gemini AI
     await sendMessage(`✍️ <i>Bước 2/5: AI đang biên tập kịch bản 4 cảnh giật gân chuẩn Hóng Hớt 24/7 (khoảng ${targetDuration}s)...</i>`, replyMessageId);
@@ -977,19 +1001,24 @@ async function pollTelegramUpdates() {
           continue;
         }
 
-        // 7. Nhận diện link bài báo (có thể kèm thời lượng, ví dụ: "https://... 45s")
+        // 7. Nhận diện link bài báo hoặc đoạn tóm tắt tin tức (có thể kèm thời lượng, ví dụ: "... 45s")
         const urlMatch = text.match(/https?:\/\/[^\s]+/);
+        let targetSec = 38;
+        const inlineSecMatch = text.match(/(\d{2})\s*(?:s|giây|sec)/i);
+        if (inlineSecMatch) {
+          targetSec = parseInt(inlineSecMatch[1], 10);
+        }
+
         if (urlMatch) {
           const targetUrl = urlMatch[0];
           lastArticleUrl = targetUrl;
-          let targetSec = 38;
-          const inlineSecMatch = text.match(/(\d{2})\s*(?:s|giây|sec)/i);
-          if (inlineSecMatch) {
-            targetSec = parseInt(inlineSecMatch[1], 10);
-          }
           executeVideoPipeline(targetUrl, msgId, { targetDuration: targetSec });
+        } else if (text.length >= 25 && !text.startsWith('/')) {
+          // Người dùng dán trực tiếp đoạn tóm tắt tin tức!
+          lastArticleUrl = text;
+          executeVideoPipeline(text, msgId, { targetDuration: targetSec });
         } else {
-          await sendMessage('💡 <i>Gửi link bài báo vào đây để tạo video (kèm 30s hoặc 45s nếu muốn), hoặc gõ "reset" nếu muốn gỡ treo nhé!</i>', msgId);
+          await sendMessage('💡 <i>Gửi link bài báo HOẶC dán trực tiếp nội dung tóm tắt tin vào đây để tạo video (kèm 30s hoặc 45s nếu muốn), hoặc gõ "reset" nếu muốn gỡ treo nhé!</i>', msgId);
         }
       }
     }
@@ -1018,8 +1047,8 @@ function startPeriodicScanner() {
 }
 
 // ─── Khởi chạy: Chế độ CLI hoặc Chế độ Bot Daemon ────────────────────────────
-if (process.argv[2] && process.argv[2].startsWith('http')) {
-  const targetUrl = process.argv[2];
+if (process.argv[2]) {
+  const targetInput = process.argv[2];
   let targetSec = 38;
   if (process.argv[3]) {
     const parsed = parseInt(process.argv[3].toString().replace(/\D/g, ''), 10);
@@ -1027,8 +1056,9 @@ if (process.argv[2] && process.argv[2].startsWith('http')) {
       targetSec = parsed;
     }
   }
-  console.log(`[CLI] 🚀 Khởi chạy tạo video trực tiếp cho URL: ${targetUrl} (thời lượng: ${targetSec}s)`);
-  executeVideoPipeline(targetUrl, null, { targetDuration: targetSec })
+  const isUrl = targetInput.startsWith('http');
+  console.log(`[CLI] 🚀 Khởi chạy tạo video trực tiếp cho ${isUrl ? 'URL' : 'nội dung văn bản'}: ${targetInput.slice(0, 80)} (thời lượng: ${targetSec}s)`);
+  executeVideoPipeline(targetInput, null, { targetDuration: targetSec })
     .then(() => {
       console.log('✅ [CLI] Toàn bộ pipeline đã hoàn tất thành công!');
       process.exit(0);

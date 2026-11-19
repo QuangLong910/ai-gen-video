@@ -243,28 +243,32 @@ export async function runScan(forceSend = false) {
   msg += `⏰ <i>Cập nhật: ${timeStr} (Chỉ gửi tin mới, không trùng lặp)</i>\n\n`;
 
   if (listSocial.length > 0) {
-    msg += `📱 <b>DRAMA & XU HƯỚNG MẠNG XÃ HỘI MỚI NỔI (TIKTOK / FB / THREADS):</b>\n`;
+    msg += `📱 <b>DRAMA & XU HƯỚNG MẠNG XÃ HỘI (TIKTOK / FB / THREADS):</b>\n\n`;
     listSocial.forEach((item, idx) => {
       msg += `<b>${idx + 1}. [${item.type}]</b>\n`;
       msg += `👉 <b>${item.title}</b>\n`;
       if (item.desc) msg += `💬 <i>${item.desc}</i>\n`;
-      msg += `🔗 <a href="${item.url}">Xem chi tiết bài viết</a>\n\n`;
+      msg += `🔗 <b>Link bài báo (chạm để copy):</b>\n<code>${item.url}</code>\n`;
+      msg += `📋 <b>Nội dung tóm tắt (chạm để copy):</b>\n<code>${item.title}. ${item.desc || ''}</code>\n\n`;
       markAsSent(item, cache);
     });
   }
 
   if (listGoogle.length > 0) {
-    msg += `⚡ <b>TIN NÓNG TÌM KIẾM BÙNG NỔ TRONG NƯỚC:</b>\n`;
+    msg += `⚡ <b>TIN NÓNG TÌM KIẾM BÙNG NỔ TRONG NƯỚC:</b>\n\n`;
     listGoogle.forEach((item, idx) => {
-      msg += `<b>${idx + 1}. ${item.keyword.toUpperCase()}</b> (Lượng tìm kiếm: <code>${item.traffic}</code>)\n`;
+      msg += `<b>${idx + 1}. ${item.keyword.toUpperCase()}</b> (Tìm kiếm: <code>${item.traffic}</code>)\n`;
       msg += `📰 <b>Sự kiện:</b> ${item.newsTitle}\n`;
       msg += `📌 <b>Nguồn:</b> ${item.source}\n`;
-      msg += `🔗 <a href="${item.url}">Xem tin tức chi tiết</a>\n\n`;
+      msg += `🔗 <b>Link bài báo (chạm để copy):</b>\n<code>${item.url}</code>\n`;
+      msg += `📋 <b>Nội dung tóm tắt (chạm để copy):</b>\n<code>${item.newsTitle} (Theo ${item.source})</code>\n\n`;
       markAsSent(item, cache);
     });
   }
 
-  msg += `🎬 <i>Cách làm video: Chọn 1 link bài viết ở trên rồi gửi lệnh <code>/gen-video &lt;link&gt;</code> để xuất video ngay!</i>`;
+  msg += `🎬 <b>CÁCH TẠO VIDEO TRÊN ĐIỆN THOẠI:</b>\n`;
+  msg += `• <b>Cách 1:</b> Chạm vào <b>Link bài báo</b> ở trên để copy rồi gửi vào bot.\n`;
+  msg += `• <b>Cách 2:</b> Chạm vào <b>Nội dung tóm tắt</b> ở trên để copy rồi dán gửi vào bot (AI tự làm video cực chuẩn mà không lo link báo bị lỗi!).`;
 
   console.log(`📤 Đang gửi ${listSocial.length} tin MXH mới và ${listGoogle.length} xu hướng tìm kiếm mới về Telegram...`);
   try {
