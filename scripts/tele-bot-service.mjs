@@ -772,7 +772,34 @@ TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
     .replace(/\s*```$/i, '')
     .trim();
 
-  return JSON.parse(rawJson);
+  const scriptData = JSON.parse(rawJson);
+
+  // Bộ lọc chuẩn hóa tự động: Ngăn chặn triệt để tình trạng AI tự ý thêm từ phóng đại hoặc tag sai sự thật
+  if (Array.isArray(scriptData.scenes)) {
+    for (const scene of scriptData.scenes) {
+      if (scene.categoryTag) {
+        scene.categoryTag = scene.categoryTag
+          .replace(/rét đậm rét hại/gi, 'VÙNG NÚI RÉT ĐẬM')
+          .replace(/rét hại/gi, 'TRỜI RÉT');
+      }
+      if (scene.title) {
+        scene.title = scene.title
+          .replace(/cực mạnh/gi, 'tăng cường')
+          .replace(/rét hại/gi, 'trời rét');
+      }
+      if (scene.subtitle) {
+        scene.subtitle = scene.subtitle.replace(/rét hại/gi, 'trời rét');
+      }
+      if (scene.text) {
+        scene.text = scene.text
+          .replace(/tăng cường mạnh mẽ/gi, 'tiếp tục tăng cường')
+          .replace(/không khí lạnh cực mạnh/gi, 'không khí lạnh tăng cường')
+          .replace(/rét đậm rét hại/gi, 'trời rét, vùng núi có nơi rét đậm');
+      }
+    }
+  }
+
+  return scriptData;
 }
 
 // ─── Automated End-to-End Pipeline ──────────────────────────────────────────
