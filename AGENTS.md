@@ -99,7 +99,7 @@ When the user types `/gen-video [--template <template-id>] [--audio=<mode>] <con
   * Dùng ảnh báo chí chính thống chụp thật được đăng tải trên các báo lớn (Dân Trí, Tuổi Trẻ, CAND, VnExpress...).
   * Dùng đồ họa thông tin (Infographics vụ án, sơ đồ dòng tiền, tóm tắt mốc sự kiện, trích dẫn phát ngôn đắt giá) hoặc ảnh chụp trích đoạn bài báo chính thống.
   * Nếu chưa có ảnh thực tế từ phiên tòa, sử dụng motion typography / headline đồ họa tin tức báo chí, tuyệt đối không tạo ảnh AI giả lập nhân thân thực tế.
-→ 3-second hook rule: Trong 3 giây đầu tiên (Hook mở đầu), BẮT BUỘC phải cài cắm các từ ngữ giật gân, khẩn cấp, cảnh báo hoặc gây sốc mạnh phù hợp với từng chủ đề (ví dụ: 'Tin cực nóng!', 'Tin khẩn cấp!', 'Biến căng vừa nổ ra!', 'Chấn động!', 'Cơn điên rồ vừa xảy ra!'...) ngay từ câu đầu tiên để chặn đứng thao tác lướt qua (stop-the-scroll), tối ưu retention giữ chân người xem cao nhất.
+→ 3-second hook rule: Trong 3 giây đầu tiên (Hook mở đầu), BẮT BUỘC mở đầu bằng cụm từ cuốn hút, tự nhiên như 'Tin nóng!', 'Tin nóng nhất hôm nay!', 'Tin cực nóng!', 'Biến động mới nhất!'... TUYỆT ĐỐI KHÔNG lạm dụng từ 'khẩn cấp' (chỉ tin nóng là đủ lôi cuốn, không làm người xem thấy báo động giả hay mệt mỏi), tối ưu retention giữ chân người xem cao nhất.
 → Mobile-First High-Retention Layout rule:
   * TÁCH TIÊU ĐỀ RA KHỎI BANNER: Tuyệt đối không nhét cả tiêu đề dài vào banner dưới làm chữ bị nhỏ li ti không đọc nổi trên điện thoại.
   * Tiêu đề và text CĂN GIỮA TRỰC TIẾP TRÊN ẢNH: Toàn bộ cụm tiêu đề chính (cỡ 76-84px vàng viền đen dày, 1 dòng duy nhất) và tóm tắt được căn giữa theo cả chiều dọc và ngang trên diện tích ảnh, tạo trọng tâm thị giác hoàn hảo trên điện thoại.

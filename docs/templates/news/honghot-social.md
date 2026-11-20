@@ -37,7 +37,7 @@ Phong cách video tin tức mạng xã hội ngắn (9:16) hiện đại, tối 
 ## 2. Quy tắc nhịp điệu & Chuyển động (Pacing & Motion)
 
 - **3 Giây đầu tiên (Hook giật gân stop-the-scroll)**:
-  * Lời bình voiceover câu đầu tiên bắt buộc phải có từ ngữ cảnh báo/giật gân: *"Tin cực nóng!"*, *"Tin khẩn cấp!"*, *"Biến căng vừa nổ ra!"*, *"Chấn động!"*...
+  * Lời bình voiceover câu đầu tiên bắt buộc phải có từ ngữ cuốn hút, tự nhiên: *"Tin nóng!"*, *"Tin nóng nhất hôm nay!"*, *"Tin cực nóng!"*, *"Biến động mới nhất!"*... (TUYỆT ĐỐI KHÔNG lạm dụng từ "khẩn cấp").
   * Hình ảnh giây 0-2 có thể có badge nhấp nháy hoặc hiệu ứng zoom giật nhẹ.
 - **Pacing hình ảnh**:
   * Mỗi video 30 - 35 giây cần chuẩn bị từ **6 đến 10 ảnh** (trung bình 2.5 - 3s/ảnh).

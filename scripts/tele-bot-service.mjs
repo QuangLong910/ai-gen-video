@@ -647,7 +647,7 @@ ${articleData.content}
 
 CÁC NGUYÊN TẮC BẮT BUỘC (QUAN TRỌNG NHẤT):
 1. PHONETIC VOICE: Khi nhắc đến tên kênh, bắt buộc viết là "Hóng Hớt hai tư trên bảy" (tuyệt đối không viết là 24/7 hay hai tư gạch bảy).
-2. 3-GIÂY ĐẦU TIÊN (HOOK MỞ ĐẦU): Câu đầu tiên của Cảnh 1 BẮT BUỘC cài từ ngữ khẩn cấp, cảnh báo hoặc gây chú ý (ví dụ: "Tin thời tiết khẩn cấp!", "Tin cực nóng!", "Biến động thời tiết mới nhất!").
+2. 3-GIÂY ĐẦU TIÊN (HOOK MỞ ĐẦU): Câu đầu tiên của Cảnh 1 BẮT BUỘC mở đầu bằng cụm từ cuốn hút, tự nhiên như: "Tin nóng!", "Tin nóng nhất hôm nay!", "Tin cực nóng!", "Biến động mới nhất!"... (TUYỆT ĐỐI KHÔNG dùng từ "khẩn cấp", chỉ cần "Tin nóng!" là đủ lôi cuốn và giữ chân người xem, không gây cảm giác báo động giả).
 3. TRUNG THỰC BÁO CHÍ 100% & TUYỆT ĐỐI KHÔNG NÓI QUÁ / KHÔNG BỊA ĐẶT (ZERO HALLUCINATION & ZERO EXAGGERATION):
    - Bám sát 100% nội dung và mức độ của bài báo: Tuyệt đối KHÔNG THỔI PHỒNG, KHÔNG DÙNG TỪ CỰC ĐOAN SAI SỰ THẬT.
      * Ví dụ: Nếu bài báo ghi "không khí lạnh tăng cường, Bắc Bộ trời rét, vùng núi có nơi rét đậm" thì PHẢI NÓI ĐÚNG là "Bắc Bộ trời rét, riêng vùng núi có nơi rét đậm", TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý nâng lên thành "không khí lạnh cực mạnh" hay "toàn Bắc Bộ chuyển rét đậm rét hại".
@@ -792,6 +792,8 @@ TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
       }
       if (scene.text) {
         scene.text = scene.text
+          .replace(/tin thời tiết khẩn cấp[!,.]*/gi, 'Tin thời tiết mới nhất!')
+          .replace(/tin khẩn cấp[!,.]*/gi, 'Tin nóng!')
           .replace(/tăng cường mạnh mẽ/gi, 'tiếp tục tăng cường')
           .replace(/không khí lạnh cực mạnh/gi, 'không khí lạnh tăng cường')
           .replace(/rét đậm rét hại/gi, 'trời rét, vùng núi có nơi rét đậm');
