@@ -1103,35 +1103,30 @@ export const VideoContent: React.FC<VideoContentProps> = ({
       stdio: 'inherit',
     });
 
-    const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
-
-    // Nếu chạy cục bộ (CLI hoặc Bot Telegram) thì nén và gửi file video trực tiếp về Telegram
-    // Nếu chạy trên GitHub Actions thì BỎ NÉN (giữ nét gốc) và BỎ GỬI FILE (tải trực tiếp từ GitHub siêu tốc)
-    if (!isGitHubActions) {
-      const optPath = path.join(ROOT, `videos/${slug}/output/video_opt.mp4`);
-      try {
-        console.log('⚡ Đang nén video tối ưu dung lượng với FFmpeg...');
-        execSync(`ffmpeg -i "${outputPath}" -vcodec libx264 -crf 26 -preset fast -acodec aac -b:a 128k "${optPath}" -y`, {
-          cwd: ROOT,
-          stdio: 'pipe',
-        });
-        if (fs.existsSync(optPath) && fs.statSync(optPath).size > 0) {
-          fs.renameSync(optPath, outputPath);
-          console.log(`✅ Nén video hoàn tất! Dung lượng mới: ${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB`);
-        }
-      } catch (e) {
-        console.warn('⚠️ Bỏ qua nén FFmpeg:', e.message);
+    // Tối ưu dung lượng video bằng FFmpeg (giúp video nhẹ, gửi Telegram siêu tốc không lo timeout)
+    const optPath = path.join(ROOT, `videos/${slug}/output/video_opt.mp4`);
+    try {
+      console.log('⚡ Đang nén video tối ưu dung lượng với FFmpeg...');
+      execSync(`ffmpeg -i "${outputPath}" -vcodec libx264 -crf 26 -preset fast -acodec aac -b:a 128k "${optPath}" -y`, {
+        cwd: ROOT,
+        stdio: 'pipe',
+      });
+      if (fs.existsSync(optPath) && fs.statSync(optPath).size > 0) {
+        fs.renameSync(optPath, outputPath);
+        console.log(`✅ Nén video hoàn tất! Dung lượng mới: ${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB`);
       }
+    } catch (e) {
+      console.warn('⚠️ Bỏ qua nén FFmpeg:', e.message);
+    }
 
-      await sendMessage(`📤 <i>Bước 5/5: Đang tải video hoàn thiện lên Telegram của bạn...</i>`, replyMessageId);
-      await sendChatAction('upload_video');
-      try {
-        const hashtagsStr = scriptData.hashtags.slice(0, 5).join(' ');
-        const caption = `🚨 <b>${scriptData.captionTitle}</b>\n\n${scriptData.captionBody}\n\n📌 <b>Nguồn:</b> ${articleData.domain}\n\n${hashtagsStr}`;
-        await sendVideo(outputPath, caption, replyMessageId);
-      } catch (sendErr) {
-        console.warn('⚠️ Gửi trực tiếp qua Telegram thất bại:', sendErr.message);
-      }
+    await sendMessage(`📤 <i>Bước 5/5: Đang tải video hoàn thiện lên Telegram của bạn...</i>`, replyMessageId);
+    await sendChatAction('upload_video');
+    try {
+      const hashtagsStr = scriptData.hashtags.slice(0, 5).join(' ');
+      const caption = `🚨 <b>${scriptData.captionTitle}</b>\n\n${scriptData.captionBody}\n\n📌 <b>Nguồn:</b> ${articleData.domain}\n\n${hashtagsStr}`;
+      await sendVideo(outputPath, caption, replyMessageId);
+    } catch (sendErr) {
+      console.warn('⚠️ Gửi trực tiếp qua Telegram thất bại:', sendErr.message);
     }
 
     const elapsed = Math.round((Date.now() - startTime) / 1000);
