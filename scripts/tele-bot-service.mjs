@@ -272,19 +272,7 @@ async function scrapeArticle(url) {
     if (metaTitle) title = metaTitle[1].trim();
   }
 
-  // 2. Paragraphs / Sapo
-  const paras = [];
-  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-  let pMatch;
-  while ((pMatch = pRegex.exec(html)) !== null) {
-    const text = pMatch[1].replace(/<[^>]+>/g, '').trim();
-    if (text.length > 25 && !text.includes('Theo dõi') && !text.includes('Bản quyền')) {
-      paras.push(text);
-    }
-  }
-
-  // 3. STRICT EDITORIAL ARTICLE IMAGES ONLY (Chỉ lấy ảnh của bài báo, tuyệt đối không lấy phần ngoài bài báo)
-  // A. Meta tags: og:image, twitter:image, image, thumbnailUrl (Ảnh đại diện chính thức của bài báo)
+  // 2. Meta tags: og:image, twitter:image, image, thumbnailUrl (Ảnh đại diện chính thức của bài báo)
   const metaImages = [];
   const metaRegex = /<meta\s+([^>]+)>/gi;
   let metaMatch;
@@ -310,7 +298,7 @@ async function scrapeArticle(url) {
     }
   }
 
-  // B. Link rel="image_src"
+  // Link rel="image_src"
   const linkRegex = /<link\s+[^>]*rel=["']image_src["'][^>]*href=["']([^"']+)["']/gi;
   let lMatch;
   while ((lMatch = linkRegex.exec(html)) !== null) {
@@ -322,8 +310,7 @@ async function scrapeArticle(url) {
     }
   }
 
-  // C. Tìm CHÍNH XÁC trong vùng nội dung bài báo (article body)
-  // Chỉ tìm trong thẻ <article> hoặc khối container nội dung bài báo
+  // 3. Tìm CHÍNH XÁC trong vùng nội dung bài báo (article body)
   let contentHtml = '';
   const articleTagMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
   if (articleTagMatch) {
@@ -350,57 +337,71 @@ async function scrapeArticle(url) {
     }
   }
 
+  // Làm sạch mã HTML: loại bỏ triệt để style, script, form, các khối minigame, tin liên quan, quảng cáo
+  const cleanedHtml = (contentHtml || html)
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<form[\s\S]*?<\/form>/gi, '')
+    .replace(/<div[^>]+(?:class|type)=["'][^"']*(?:boxG_|minigame|game-box|box-game|poll|vote|tin_lien_quan|tin-lien-quan|related|suggest|box-share|comment|banner|adbox|quangcao|sidebar)[^"']*["'][\s\S]*?<\/div>/gi, '');
+
+  // 4. Trích xuất Paragraphs từ văn bản sạch (loại bỏ hoàn toàn CSS hay mã rác)
+  const paras = [];
+  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+  let pMatch;
+  while ((pMatch = pRegex.exec(cleanedHtml)) !== null) {
+    const text = pMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+    if (
+      text.length > 25 &&
+      !text.includes('Theo dõi') &&
+      !text.includes('Bản quyền') &&
+      !text.startsWith('Ảnh:') &&
+      !text.startsWith('Nguồn:')
+    ) {
+      paras.push(text);
+    }
+  }
+
+  // 5. Quét ảnh trong thân bài báo (Editorial Body Images)
   const bodyImages = [];
-  if (contentHtml) {
-    // Loại bỏ triệt để các khối không thuộc nội dung báo chí (quảng cáo, form minigame, tin liên quan, bình luận)
-    const cleanedHtml = contentHtml
-      .replace(/<form[\s\S]*?<\/form>/gi, '')
-      .replace(/<script[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<div[^>]+(?:class|type)=["'][^"']*(?:boxG_|minigame|game-box|box-game|poll|vote|tin_lien_quan|tin-lien-quan|related|suggest|box-share|comment|banner|adbox|quangcao|sidebar)[^"']*["'][\s\S]*?<\/div>/gi, '');
+  const badClassOrId = /(?:logo|icon|button|avatar|banner|adbox|box-game|minigame|game-box|quangcao|sidebar|tin_lien_quan|tin-lien-quan|sponsor)/i;
+  const imgTagRegex = /<img\s+([^>]+)>/gi;
+  let m;
+  while ((m = imgTagRegex.exec(cleanedHtml)) !== null) {
+    const attrs = m[1];
 
-    // Quét các thẻ <img> nằm trong bài báo
-    const badClassOrId = /(?:logo|icon|button|avatar|banner|adbox|box-game|minigame|game-box|quangcao|sidebar|tin_lien_quan|tin-lien-quan|sponsor)/i;
+    // Chỉ lọc bỏ nếu class hoặc id chứa các từ khóa quảng cáo/rác (không lọc rel="lightbox" hay alt của ảnh)
+    const classAndId = ((attrs.match(/class=["']([^"']+)["']/i) || [])[1] || '') + ' ' + ((attrs.match(/id=["']([^"']+)["']/i) || [])[1] || '');
+    if (badClassOrId.test(classAndId)) {
+      continue;
+    }
 
-    const imgTagRegex = /<img\s+([^>]+)>/gi;
-    let m;
-    while ((m = imgTagRegex.exec(cleanedHtml)) !== null) {
-      const attrs = m[1];
+    // Ưu tiên data-original (ảnh gốc phân giải cao không crop), sau đó tới data-src, và cuối cùng src
+    const origMatch = attrs.match(/data-original=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
+    const dataSrcMatch = attrs.match(/data-src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
+    const srcMatch = attrs.match(/src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
+    const targetMatch = origMatch || dataSrcMatch || srcMatch;
+    if (!targetMatch) continue;
 
-      // Chỉ lọc bỏ nếu class hoặc id chứa các từ khóa quảng cáo/rác (không lọc rel="lightbox" hay alt của ảnh)
-      const classAndId = ((attrs.match(/class=["']([^"']+)["']/i) || [])[1] || '') + ' ' + ((attrs.match(/id=["']([^"']+)["']/i) || [])[1] || '');
-      if (badClassOrId.test(classAndId)) {
-        continue;
-      }
+    const link = targetMatch[1].split('?')[0].replace(/["']$/, '');
+    const lower = link.toLowerCase();
 
-      // Ưu tiên data-original (ảnh gốc phân giải cao không crop), sau đó tới data-src, và cuối cùng src
-      const origMatch = attrs.match(/data-original=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
-      const dataSrcMatch = attrs.match(/data-src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
-      const srcMatch = attrs.match(/src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
-      const targetMatch = origMatch || dataSrcMatch || srcMatch;
-      if (!targetMatch) continue;
+    // Kiểm tra URL ảnh
+    const isBadUrl =
+      lower.includes('logo') ||
+      lower.includes('icon') ||
+      lower.includes('avatar') ||
+      lower.includes('banner') ||
+      lower.includes('adbox') ||
+      lower.includes('box-game') ||
+      lower.includes('minigame') ||
+      lower.includes('35x35') ||
+      lower.includes('40x22') ||
+      lower.includes('svg') ||
+      lower.includes('transparent') ||
+      lower.includes('default');
 
-      const link = targetMatch[1].split('?')[0].replace(/["']$/, '');
-      const lower = link.toLowerCase();
-
-      // Kiểm tra URL ảnh
-      const isBadUrl =
-        lower.includes('logo') ||
-        lower.includes('icon') ||
-        lower.includes('avatar') ||
-        lower.includes('banner') ||
-        lower.includes('adbox') ||
-        lower.includes('box-game') ||
-        lower.includes('minigame') ||
-        lower.includes('35x35') ||
-        lower.includes('40x22') ||
-        lower.includes('svg') ||
-        lower.includes('transparent') ||
-        lower.includes('default');
-
-      if (!isBadUrl && !bodyImages.includes(link)) {
-        bodyImages.push(link);
-      }
+    if (!isBadUrl && !bodyImages.includes(link)) {
+      bodyImages.push(link);
     }
   }
 
@@ -419,7 +420,7 @@ async function scrapeArticle(url) {
     url,
     domain,
     title: title || 'Tin tức nóng trong ngày',
-    content: paras.slice(0, 10).join('\n\n'),
+    content: paras.slice(0, 25).join('\n\n'), // Đảm bảo cung cấp đầy đủ dữ liệu thời tiết/sự kiện chi tiết cho AI
     imgUrls: imgUrls.slice(0, 6), // Chỉ giữ tối đa 6 ảnh báo chí thực thụ từ bài viết
   };
 }
@@ -641,18 +642,24 @@ Hãy viết kịch bản video ngắn (khoảng ${targetDuration} giây) từ b�
 THÔNG TIN BÀI BÁO:
 - Tiêu đề: ${articleData.title}
 - Nguồn: ${articleData.domain}
-- Nội dung tóm tắt:
+- Nội dung trích xuất chính xác từ bài báo:
 ${articleData.content}
 
 CÁC NGUYÊN TẮC BẮT BUỘC (QUAN TRỌNG NHẤT):
 1. PHONETIC VOICE: Khi nhắc đến tên kênh, bắt buộc viết là "Hóng Hớt hai tư trên bảy" (tuyệt đối không viết là 24/7 hay hai tư gạch bảy).
-2. 3-GIÂY ĐẦU TIÊN (HOOK MỞ ĐẦU): Câu đầu tiên của Cảnh 1 BẮT BUỘC phải cài từ ngữ giật gân, khẩn cấp (ví dụ: "Tin cực nóng!", "Tin khẩn cấp!", "Biến căng vừa nổ ra!", "Chấn động!").
+2. 3-GIÂY ĐẦU TIÊN (HOOK MỞ ĐẦU): Câu đầu tiên của Cảnh 1 BẮT BUỘC cài từ ngữ khẩn cấp, cảnh báo hoặc gây chú ý (ví dụ: "Tin thời tiết khẩn cấp!", "Tin cực nóng!", "Biến động thời tiết mới nhất!").
+3. TRUNG THỰC BÁO CHÍ 100% & TUYỆT ĐỐI KHÔNG NÓI QUÁ / KHÔNG BỊA ĐẶT (ZERO HALLUCINATION & ZERO EXAGGERATION):
+   - Bám sát 100% nội dung và mức độ của bài báo: Tuyệt đối KHÔNG THỔI PHỒNG, KHÔNG DÙNG TỪ CỰC ĐOAN SAI SỰ THẬT.
+     * Ví dụ: Nếu bài báo ghi "không khí lạnh tăng cường, Bắc Bộ trời rét, vùng núi có nơi rét đậm" thì PHẢI NÓI ĐÚNG là "Bắc Bộ trời rét, riêng vùng núi có nơi rét đậm", TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý nâng lên thành "không khí lạnh cực mạnh" hay "toàn Bắc Bộ chuyển rét đậm rét hại".
+   - Số liệu nhiệt độ & lượng mưa: Chỉ trích dẫn chính xác các con số và khu vực có trong bài báo (ví dụ mốc 16-19 độ C lúc 1h sáng, vùng núi 11-14 độ C, lượng mưa 80-160mm). Tuyệt đối không tự suy diễn hay lấy số liệu ngoài bài báo.
+   - Địa danh & phạm vi ảnh hưởng: Phải gọi đúng và đủ các địa danh được bài báo nêu rõ (ví dụ: "từ Quảng Trị đến Đà Nẵng và phía Đông các tỉnh từ Quảng Ngãi đến Gia Lai", không được tự ý cắt xén làm sai lệch ranh giới khu vực ảnh hưởng).
+   - Nguy cơ & cảnh báo rủi ro: Nêu đúng các hiện tượng nguy hiểm mà bài báo cảnh báo trọng tâm (lốc, sét, mưa đá, gió giật mạnh trong mưa dông, sóng lớn biển động), không tự ý suy đoán lệch trọng tâm sang các hiểm họa khác.
 ${lengthReq}
 4. KHUNG HÌNH (TIÊU ĐỀ CĂN GIỮA TRÊN ẢNH):
-   - title: Tiêu đề in hoa, ngắn gọn, giật gân, tối đa 5-7 từ.
+   - title: Tiêu đề in hoa, ngắn gọn, phản ánh đúng thực tế, tối đa 5-7 từ.
    - subtitle: 1 câu tóm tắt nội dung cảnh đó (khoảng 10-14 từ).
-   - categoryTag: 1 tag cảm xúc có icon (ví dụ: "🚨 TIN CỰC NÓNG", "⚖️ PHÁP LUẬT").
-5. CAPTION & 5 HASHTAG: Tạo caption đăng mạng xã hội và CHỈ DÙNG TỐI ĐA 5 HASHTAG.
+   - categoryTag: 1 tag cảm xúc có icon (ví dụ: "🚨 TIN CỰC NÓNG", "⛈️ DỰ BÁO THỜI TIẾT", "⚖️ PHÁP LUẬT").
+5. CAPTION & 5 HASHTAG: Tạo caption đăng mạng xã hội và CHỈ DÙNG TỐI ĐA 5 HASHTAG (chọn 5 hashtag đắt giá, cô đọng nhất).
 
 TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
 {
