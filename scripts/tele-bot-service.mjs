@@ -1263,7 +1263,7 @@ async function pollTelegramUpdates() {
           continue;
         }
 
-        // 7. Nhận diện link bài báo hoặc đoạn tóm tắt tin tức (có thể kèm thời lượng, ví dụ: "... 45s")
+        // 7. Nhận diện link bài báo hoặc lệnh làm video từ nội dung tóm tắt
         const urlMatch = text.match(/https?:\/\/[^\s]+/);
         let targetSec = 38;
         const inlineSecMatch = text.match(/(\d{2})\s*(?:s|giây|sec)/i);
@@ -1271,16 +1271,28 @@ async function pollTelegramUpdates() {
           targetSec = parseInt(inlineSecMatch[1], 10);
         }
 
+        const isExplicitMakeVideo =
+          lower.startsWith('làm video:') ||
+          lower.startsWith('tạo video:') ||
+          lower.startsWith('video:') ||
+          lower.startsWith('gen:') ||
+          lower.startsWith('làm video ') ||
+          lower.startsWith('tạo video ') ||
+          text.includes('(Theo ');
+
         if (urlMatch) {
           const targetUrl = urlMatch[0];
           lastArticleUrl = targetUrl;
           executeVideoPipeline(targetUrl, msgId, { targetDuration: targetSec });
-        } else if (text.length >= 25 && !text.startsWith('/')) {
-          // Người dùng dán trực tiếp đoạn tóm tắt tin tức!
-          lastArticleUrl = text;
-          executeVideoPipeline(text, msgId, { targetDuration: targetSec });
+        } else if (isExplicitMakeVideo && text.length >= 25) {
+          // Người dùng chủ động yêu cầu làm video từ đoạn tóm tắt
+          const cleanContent = text
+            .replace(/^(?:làm video:|tạo video:|video:|gen:|làm video|tạo video)\s*/i, '')
+            .trim();
+          lastArticleUrl = cleanContent;
+          executeVideoPipeline(cleanContent, msgId, { targetDuration: targetSec });
         } else {
-          await sendMessage('💡 <i>Gửi link bài báo HOẶC dán trực tiếp nội dung tóm tắt tin vào đây để tạo video (kèm 30s hoặc 45s nếu muốn), hoặc gõ "reset" nếu muốn gỡ treo nhé!</i>', msgId);
+          await sendMessage('💡 <i>Để tạo video, bạn hãy gửi <b>link bài báo</b> (hoặc gõ: <code>làm video: &lt;nội dung&gt;</code>) nhé! Để xem tin nóng mới nhất, hãy nhắn <code>có tin gì mới ko</code>.</i>', msgId);
         }
       }
     }
