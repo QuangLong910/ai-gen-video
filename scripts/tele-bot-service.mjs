@@ -1073,9 +1073,9 @@ export const VideoContent: React.FC<VideoContentProps> = ({
 
     const isGitHubActions = process.env.GITHUB_ACTIONS === 'true';
 
-    // Nếu chạy cục bộ trên bot Telegram thì mới cần nén và gửi file video
+    // Nếu chạy cục bộ (CLI hoặc Bot Telegram) thì nén và gửi file video trực tiếp về Telegram
     // Nếu chạy trên GitHub Actions thì BỎ NÉN (giữ nét gốc) và BỎ GỬI FILE (tải trực tiếp từ GitHub siêu tốc)
-    if (!isGitHubActions && replyMessageId) {
+    if (!isGitHubActions) {
       const optPath = path.join(ROOT, `videos/${slug}/output/video_opt.mp4`);
       try {
         console.log('⚡ Đang nén video tối ưu dung lượng với FFmpeg...');
