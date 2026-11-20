@@ -13,6 +13,9 @@ Phong cách video tin tức mạng xã hội ngắn (9:16) hiện đại, tối 
 - **Quy tắc nghiêm ngặt: Tuyệt đối KHÔNG DÙNG ẢNH AI GEN cho tin Pháp Luật / Tòa Án / Bắt Bớ / Nhân Vật Thật**:
   * Đối với các đại án, phiên tòa, lệnh bắt, bị can/bị cáo là nhân vật có thật: TUYỆT ĐỐI KHÔNG dùng AI để sinh ảnh vẽ mặt, vẽ phiên tòa, vẽ cảnh còng tay (dễ gây sai lệch nhân thân, sai trang phục tư pháp, vi phạm đạo đức báo chí).
   * BẮT BUỘC dùng ảnh báo chí chính thống chụp thật được các báo lớn đăng tải (VnExpress, Dân Trí, Tuổi Trẻ, CAND...), ảnh tư liệu thực tế, hoặc đồ họa typography/infographics trích dẫn lời khai, số liệu vụ án.
+- **Quy tắc tin Chính Sách, Pháp Luật, Thuế, Phí (Policy & Effective Date Rule)**:
+  * BẮT BUỘC nêu rõ mốc thời gian có hiệu lực / lộ trình thực thi (ví dụ: *"áp dụng từ 1/7/2027"*, *"có hiệu lực từ đầu năm tới"*) nếu bài báo có đề cập. Tuyệt đối không diễn đạt chung chung khiến khán giả hiểu nhầm là áp dụng ngay lập tức.
+  * Phải đưa con số định lượng cụ thể (mức thuế, đối tượng áp dụng, điều kiện miễn trừ) thay vì các câu chữ khái quát, sáo rỗng.
 - **Bố cục 3 Tầng tách biệt (Tối ưu màn hình điện thoại)**:
   1. **Tầng 1 (1/3 trên cùng - Hook Headline đè lên ảnh)**:
      - Tiêu đề ngắn gọn, đắt giá, giật gân, **đè trực tiếp lên ảnh**.

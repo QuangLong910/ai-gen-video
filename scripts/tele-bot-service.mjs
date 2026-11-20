@@ -654,6 +654,9 @@ CÁC NGUYÊN TẮC BẮT BUỘC (QUAN TRỌNG NHẤT):
    - Số liệu nhiệt độ & lượng mưa: Chỉ trích dẫn chính xác các con số và khu vực có trong bài báo (ví dụ mốc 16-19 độ C lúc 1h sáng, vùng núi 11-14 độ C, lượng mưa 80-160mm). Tuyệt đối không tự suy diễn hay lấy số liệu ngoài bài báo.
    - Địa danh & phạm vi ảnh hưởng: Phải gọi đúng và đủ các địa danh được bài báo nêu rõ (ví dụ: "từ Quảng Trị đến Đà Nẵng và phía Đông các tỉnh từ Quảng Ngãi đến Gia Lai", không được tự ý cắt xén làm sai lệch ranh giới khu vực ảnh hưởng).
    - Nguy cơ & cảnh báo rủi ro: Nêu đúng các hiện tượng nguy hiểm mà bài báo cảnh báo trọng tâm (lốc, sét, mưa đá, gió giật mạnh trong mưa dông, sóng lớn biển động), không tự ý suy đoán lệch trọng tâm sang các hiểm họa khác.
+   - ĐỐI VỚI TIN CHÍNH SÁCH, PHÁP LUẬT, THUẾ, PHÍ, QUY ĐỊNH MỚI (POLICY & EFFECTIVE DATE):
+     * BẮT BUỘC NÊU RÕ MỐC THỜI GIAN CÓ HIỆU LỰC / LỘ TRÌNH THỰC THI (ví dụ: "áp dụng từ ngày 1/7/2027", "bắt đầu từ đầu năm tới") nếu bài báo có đề cập. Tuyệt đối không diễn đạt chung chung khiến người xem hiểu nhầm là chính sách áp dụng ngay lập tức!
+     * Nêu rõ con số định lượng cụ thể (mức thuế suất 0,2%), đối tượng áp dụng (đất bỏ hoang, chậm đưa vào sử dụng) và căn cứ xác định theo luật định, tránh dùng các câu từ sáo rỗng, khái quát.
 ${lengthReq}
 4. KHUNG HÌNH (TIÊU ĐỀ CĂN GIỮA TRÊN ẢNH):
    - title: Tiêu đề in hoa, ngắn gọn, phản ánh đúng thực tế, tối đa 5-7 từ.

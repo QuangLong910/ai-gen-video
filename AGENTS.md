@@ -99,6 +99,9 @@ When the user types `/gen-video [--template <template-id>] [--audio=<mode>] <con
   * Dùng ảnh báo chí chính thống chụp thật được đăng tải trên các báo lớn (Dân Trí, Tuổi Trẻ, CAND, VnExpress...).
   * Dùng đồ họa thông tin (Infographics vụ án, sơ đồ dòng tiền, tóm tắt mốc sự kiện, trích dẫn phát ngôn đắt giá) hoặc ảnh chụp trích đoạn bài báo chính thống.
   * Nếu chưa có ảnh thực tế từ phiên tòa, sử dụng motion typography / headline đồ họa tin tức báo chí, tuyệt đối không tạo ảnh AI giả lập nhân thân thực tế.
+→ Policy & Effective Date Rule: Với các tin thời sự về chính sách, luật pháp, thuế, phí hoặc quy định mới:
+  * BẮT BUỘC nêu rõ mốc thời gian có hiệu lực / lộ trình thực thi (ví dụ: "áp dụng từ 1/7/2027", "có hiệu lực từ đầu năm tới") nếu bài báo có nêu, tuyệt đối không diễn đạt chung chung khiến khán giả hiểu nhầm là áp dụng ngay lập tức.
+  * Phải đưa con số định lượng cụ thể (mức thuế, đối tượng áp dụng, điều kiện miễn trừ) thay vì các câu chữ khái quát, sáo rỗng.
 → 3-second hook rule: Trong 3 giây đầu tiên (Hook mở đầu), BẮT BUỘC mở đầu bằng cụm từ cuốn hút, tự nhiên như 'Tin nóng!', 'Tin nóng nhất hôm nay!', 'Tin cực nóng!', 'Biến động mới nhất!'... TUYỆT ĐỐI KHÔNG lạm dụng từ 'khẩn cấp' (chỉ tin nóng là đủ lôi cuốn, không làm người xem thấy báo động giả hay mệt mỏi), tối ưu retention giữ chân người xem cao nhất.
 → Mobile-First High-Retention Layout rule:
   * TÁCH TIÊU ĐỀ RA KHỎI BANNER: Tuyệt đối không nhét cả tiêu đề dài vào banner dưới làm chữ bị nhỏ li ti không đọc nổi trên điện thoại.
