@@ -31,11 +31,10 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: 🐍 Cài đặt Python & Thư viện Pillow
+      - name: 🐍 Cài đặt Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
       - name: 📦 Cài đặt Pillow cho Python
         run: pip install pillow
