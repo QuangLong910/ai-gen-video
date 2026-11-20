@@ -1201,15 +1201,33 @@ async function pollTelegramUpdates() {
             `3️⃣ <b>Xử lý khi bị treo:</b>\n` +
             `👉 Gõ <code>reset</code> hoặc <code>hủy</code>: Lập tức gỡ treo và giải phóng máy để nhận lệnh mới.\n\n` +
             `4️⃣ <b>Săn tin hot & Xu hướng:</b>\n` +
-            `👉 Gõ <code>/trend</code> hoặc <code>/tin</code>\n` +
+            `👉 Nhắn: <code>có tin gì mới ko</code>, <code>tin mới</code>, <code>tin hot</code>, <code>/trend</code> hoặc <code>/tin</code>\n` +
             `👉 Gõ <code>/status</code> để xem tình trạng hoạt động.`;
           await sendMessage(helpText, msgId);
           continue;
         }
 
-        // 3. Quét tin hot
-        if (text === '/trend' || text === '/tin') {
-          await sendMessage('🔍 <i>Đang quét tin hot mới nhất từ TikTok, Facebook và Google Trends...</i>', msgId);
+        // 3. Quét tin hot / Hỏi tin tức mới ("có tin gì mới ko", "tin mới", "trend",...)
+        const isTrendQuery =
+          text === '/trend' ||
+          text === '/tin' ||
+          lower === 'trend' ||
+          lower === 'trends' ||
+          lower === 'xu hướng' ||
+          lower.includes('tin mới') ||
+          lower.includes('tin tức mới') ||
+          lower.includes('có gì mới') ||
+          lower.includes('có tin gì mới') ||
+          lower.includes('có tin mới') ||
+          lower.includes('tin hot') ||
+          lower.includes('tin nóng') ||
+          lower.includes('có biến gì') ||
+          lower.includes('săn tin') ||
+          lower.includes('trend gì') ||
+          lower.includes('xu hướng gì');
+
+        if (isTrendQuery && !text.includes('http')) {
+          await sendMessage('🔍 <i>Đang quét và tổng hợp các tin hot, xu hướng mới nhất từ mạng xã hội và Google Trends cho bạn...</i>', msgId);
           await runScan(true);
           continue;
         }

@@ -227,20 +227,22 @@ export async function runScan(forceSend = false) {
   const freshSocial = socialItems.filter(s => !isDuplicate(s, cache));
   const freshGoogle = googleItems.filter(g => !isDuplicate(g, cache));
 
-  const listSocial = freshSocial.slice(0, 3);
-  const listGoogle = freshGoogle.slice(0, 3);
+  let listSocial = freshSocial.slice(0, 3);
+  let listGoogle = freshGoogle.slice(0, 3);
 
   if (listSocial.length === 0 && listGoogle.length === 0) {
     if (!forceSend) {
       console.log(`ℹ️ [${timeStr}] Không có tin mới so với các lần gửi trước. Bỏ qua, KHÔNG gửi tin trùng.`);
       return false;
     } else {
-      console.log('⚠️ [Force] Không có tin mới nhưng được yêu cầu gửi ép buộc.');
+      console.log('⚠️ [Force] Tất cả tin hiện tại đã được gửi gần đây, lấy top xu hướng nóng nhất.');
+      listSocial = socialItems.slice(0, 3);
+      listGoogle = googleItems.slice(0, 3);
     }
   }
 
   let msg = `🔥 <b>BẢN TIN SĂN TREND TIKTOK, FACEBOOK & TIN NÓNG MỚI NHẤT</b>\n`;
-  msg += `⏰ <i>Cập nhật: ${timeStr} (Chỉ gửi tin mới, không trùng lặp)</i>\n\n`;
+  msg += `⏰ <i>Cập nhật: ${timeStr}</i>\n\n`;
 
   if (listSocial.length > 0) {
     msg += `📱 <b>DRAMA & XU HƯỚNG MẠNG XÃ HỘI (TIKTOK / FB / THREADS):</b>\n\n`;
