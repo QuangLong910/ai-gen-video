@@ -284,6 +284,8 @@ export async function runScan(forceSend = false) {
   }
 }
 
-// Single execution or forced
-const force = process.argv.includes('--force');
-runScan(force);
+// Chỉ chạy quét tin khi file được gọi trực tiếp qua CLI
+if (process.argv[1] && process.argv[1].endsWith('send-tele-trends.mjs')) {
+  const force = process.argv.includes('--force');
+  runScan(force);
+}

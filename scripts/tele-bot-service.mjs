@@ -1307,19 +1307,6 @@ async function pollTelegramUpdates() {
   setImmediate(pollTelegramUpdates);
 }
 
-// ─── Periodic Trend Auto-Scan (Mỗi 30 phút) ──────────────────────────────────
-function startPeriodicScanner() {
-  console.log('⏰ Đã kích hoạt bộ quét tin tự động định kỳ mỗi 30 phút.');
-  setInterval(async () => {
-    try {
-      console.log('⏰ [Định kỳ] Đang quét tin hot mới gửi về Telegram...');
-      await runScan(false);
-    } catch (e) {
-      console.error('Lỗi quét tin định kỳ:', e.message);
-    }
-  }, 30 * 60 * 1000);
-}
-
 // ─── Khởi chạy: Chế độ CLI hoặc Chế độ Bot Daemon ────────────────────────────
 if (process.argv[2]) {
   const targetInput = process.argv[2];
@@ -1348,7 +1335,5 @@ if (process.argv[2]) {
   console.log(`👤 Authorized Chat ID: ${CHAT_ID}`);
   console.log('====================================================');
 
-  sendMessage('🟢 <b>Dịch vụ Hóng Hớt 24/7 Bot đã kích hoạt!</b>\nTừ bây giờ bạn có thể gửi trực tiếp link bài báo vào đây để tự động làm video nhé!').catch(() => {});
-  startPeriodicScanner();
   pollTelegramUpdates();
 }
