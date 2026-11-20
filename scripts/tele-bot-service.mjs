@@ -183,7 +183,8 @@ async function sendVideo(videoPath, caption, replyToId = null) {
 }
 
 // ─── Network & Scraper ───────────────────────────────────────────────────────
-async function fetchHtml(url) {
+async function fetchHtml(url, redirectCount = 0) {
+  if (redirectCount > 5) throw new Error('Quá nhiều lượt chuyển hướng (redirect loop)');
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
     const req = client.get(
@@ -197,6 +198,10 @@ async function fetchHtml(url) {
         timeout: 20000,
       },
       (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          const redirectUrl = new URL(res.headers.location, url).href;
+          return fetchHtml(redirectUrl, redirectCount + 1).then(resolve).catch(reject);
+        }
         let chunks = [];
         res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
@@ -231,10 +236,26 @@ function extractDomainName(urlStr) {
     if (host.includes('cand')) return 'BÁO CÔNG AN NHÂN DÂN';
     if (host.includes('laodong')) return 'BÁO LAO ĐỘNG';
     if (host.includes('vietnamnet')) return 'VIETNAMNET';
+    if (host.includes('thethaovanhoa')) return 'THỂ THAO & VĂN HÓA';
     return host.replace(/^www\./, '').toUpperCase();
   } catch (e) {
     return 'BÁO ĐIỆN TỬ';
   }
+}
+
+// Hàm kiểm tra 2 URL ảnh có cùng một gốc ảnh không (để tránh trùng lặp giữa ảnh thân bài và og:image thu nhỏ)
+function isSameImage(url1, url2) {
+  if (!url1 || !url2) return false;
+  if (url1 === url2) return true;
+  const f1 = url1.split('/').pop().split('?')[0].toLowerCase();
+  const f2 = url2.split('/').pop().split('?')[0].toLowerCase();
+  if (f1 === f2) return true;
+  const stem1 = f1.replace(/-crop-.*$/, '').replace(/-\d+$/, '').slice(0, 25);
+  const stem2 = f2.replace(/-crop-.*$/, '').replace(/-\d+$/, '').slice(0, 25);
+  if (stem1.length >= 10 && stem2.length >= 10 && (stem1.includes(stem2) || stem2.includes(stem1))) {
+    return true;
+  }
+  return false;
 }
 
 async function scrapeArticle(url) {
@@ -263,9 +284,8 @@ async function scrapeArticle(url) {
   }
 
   // 3. STRICT EDITORIAL ARTICLE IMAGES ONLY (Chỉ lấy ảnh của bài báo, tuyệt đối không lấy phần ngoài bài báo)
-  const imgUrls = [];
-
   // A. Meta tags: og:image, twitter:image, image, thumbnailUrl (Ảnh đại diện chính thức của bài báo)
+  const metaImages = [];
   const metaRegex = /<meta\s+([^>]+)>/gi;
   let metaMatch;
   while ((metaMatch = metaRegex.exec(html)) !== null) {
@@ -273,7 +293,7 @@ async function scrapeArticle(url) {
     const isImageMeta = /(?:property|name|itemprop)=["'](?:og:image|twitter:image|image|thumbnailUrl)["']/i.test(attrs);
     if (isImageMeta) {
       const c = attrs.match(/content=["']([^"']+)["']/i);
-      if (c && c[1].startsWith('http') && !imgUrls.includes(c[1])) {
+      if (c && c[1].startsWith('http') && !metaImages.includes(c[1])) {
         const lower = c[1].toLowerCase();
         // Loại bỏ logo website, banner chung, default avatar
         if (
@@ -284,7 +304,7 @@ async function scrapeArticle(url) {
           !lower.includes('.svg') &&
           !lower.includes('.gif')
         ) {
-          imgUrls.push(c[1]);
+          metaImages.push(c[1]);
         }
       }
     }
@@ -294,10 +314,10 @@ async function scrapeArticle(url) {
   const linkRegex = /<link\s+[^>]*rel=["']image_src["'][^>]*href=["']([^"']+)["']/gi;
   let lMatch;
   while ((lMatch = linkRegex.exec(html)) !== null) {
-    if (lMatch[1].startsWith('http') && !imgUrls.includes(lMatch[1])) {
+    if (lMatch[1].startsWith('http') && !metaImages.includes(lMatch[1])) {
       const lower = lMatch[1].toLowerCase();
       if (!lower.includes('logo') && !lower.includes('banner') && !lower.includes('avatar') && !lower.includes('.svg')) {
-        imgUrls.push(lMatch[1]);
+        metaImages.push(lMatch[1]);
       }
     }
   }
@@ -323,59 +343,75 @@ async function scrapeArticle(url) {
       }
     }
     if (startIdx !== -1) {
-      // Cắt từ điểm bắt đầu đến footer/sidebar hoặc tối đa 60.000 ký tự
-      const rawChunk = html.slice(startIdx, startIdx + 60000);
+      // Cắt từ điểm bắt đầu đến footer/sidebar hoặc tối đa 80.000 ký tự
+      const rawChunk = html.slice(startIdx, startIdx + 80000);
       const cutIdx = rawChunk.search(/<(?:footer|aside|div[^>]+id=["']comment|div[^>]+class=["'][^"']*(?:comment|sidebar|footer))/i);
       contentHtml = cutIdx !== -1 ? rawChunk.slice(0, cutIdx) : rawChunk;
     }
   }
 
+  const bodyImages = [];
   if (contentHtml) {
     // Loại bỏ triệt để các khối không thuộc nội dung báo chí (quảng cáo, form minigame, tin liên quan, bình luận)
     const cleanedHtml = contentHtml
       .replace(/<form[\s\S]*?<\/form>/gi, '')
       .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<div[^>]+class=["'][^"']*(?:boxG_|minigame|game|box-game|poll|vote|tin_lien_quan|tin-lien-quan|related|suggest|box-share|comment|banner|adbox|quangcao|sidebar)[^"']*["'][\s\S]*?<\/div>/gi, '');
+      .replace(/<div[^>]+(?:class|type)=["'][^"']*(?:boxG_|minigame|game-box|box-game|poll|vote|tin_lien_quan|tin-lien-quan|related|suggest|box-share|comment|banner|adbox|quangcao|sidebar)[^"']*["'][\s\S]*?<\/div>/gi, '');
 
     // Quét các thẻ <img> nằm trong bài báo
+    const badClassOrId = /(?:logo|icon|button|avatar|banner|adbox|box-game|minigame|game-box|quangcao|sidebar|tin_lien_quan|tin-lien-quan|sponsor)/i;
+
     const imgTagRegex = /<img\s+([^>]+)>/gi;
     let m;
     while ((m = imgTagRegex.exec(cleanedHtml)) !== null) {
       const attrs = m[1];
 
-      // Bỏ qua nếu thuộc tính class, id, alt chứa từ khóa quảng cáo / UI / rác
-      if (/(?:logo|icon|button|player|flag|game|box|banner|avatar|close|share|ads|advertisement|sponsor|tin_lien_quan)/i.test(attrs)) {
+      // Chỉ lọc bỏ nếu class hoặc id chứa các từ khóa quảng cáo/rác (không lọc rel="lightbox" hay alt của ảnh)
+      const classAndId = ((attrs.match(/class=["']([^"']+)["']/i) || [])[1] || '') + ' ' + ((attrs.match(/id=["']([^"']+)["']/i) || [])[1] || '');
+      if (badClassOrId.test(classAndId)) {
         continue;
       }
 
-      // Lấy link ảnh từ data-original, data-src, hoặc src
-      const srcMatch = attrs.match(/(?:data-original|data-src|src)=["'](https?:\/\/[^"\x27]+\.(?:jpg|jpeg|png|webp)[^"\x27]*)["']/i);
-      if (!srcMatch) continue;
+      // Ưu tiên data-original (ảnh gốc phân giải cao không crop), sau đó tới data-src, và cuối cùng src
+      const origMatch = attrs.match(/data-original=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
+      const dataSrcMatch = attrs.match(/data-src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
+      const srcMatch = attrs.match(/src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
+      const targetMatch = origMatch || dataSrcMatch || srcMatch;
+      if (!targetMatch) continue;
 
-      const link = srcMatch[1].split('?')[0];
+      const link = targetMatch[1].split('?')[0].replace(/["']$/, '');
       const lower = link.toLowerCase();
 
       // Kiểm tra URL ảnh
       const isBadUrl =
         lower.includes('logo') ||
         lower.includes('icon') ||
-        lower.includes('player') ||
-        lower.includes('flag') ||
-        lower.includes('game') ||
-        lower.includes('box-game') ||
-        lower.includes('banner') ||
         lower.includes('avatar') ||
+        lower.includes('banner') ||
+        lower.includes('adbox') ||
+        lower.includes('box-game') ||
+        lower.includes('minigame') ||
         lower.includes('35x35') ||
         lower.includes('40x22') ||
         lower.includes('svg') ||
-        lower.includes('close') ||
         lower.includes('transparent') ||
         lower.includes('default');
 
-      if (!isBadUrl && !imgUrls.includes(link)) {
-        imgUrls.push(link);
+      if (!isBadUrl && !bodyImages.includes(link)) {
+        bodyImages.push(link);
       }
+    }
+  }
+
+  // Kết hợp: Ưu tiên ảnh báo chí gốc trong thân bài (bodyImages) vì là ảnh độ phân giải cao, đầy đủ góc chụp
+  const imgUrls = [...bodyImages];
+
+  // Bổ sung ảnh đại diện (metaImages) nếu chưa có hoặc là ảnh bìa độc lập không trùng thân bài
+  for (const metaImg of metaImages) {
+    const isDup = imgUrls.some((u) => isSameImage(u, metaImg));
+    if (!isDup && !imgUrls.includes(metaImg)) {
+      imgUrls.push(metaImg);
     }
   }
 
