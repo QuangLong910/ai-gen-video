@@ -3,6 +3,7 @@ import {
   AbsoluteFill,
   Img,
   OffthreadVideo,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -17,10 +18,18 @@ const {fontFamily} = loadFont('normal', {
   subsets: ['latin', 'vietnamese'],
 });
 
+export interface MediaItem {
+  type: 'image' | 'video';
+  src: string;
+  startFrom?: number;
+  durationSec?: number;
+}
+
 export interface SocialContentSceneProps {
   slug: string;
   image?: string;
   images?: string[]; // Hỗ trợ mảng ảnh để đổi ảnh nhanh 2.5s - 3s/ảnh
+  media?: MediaItem[]; // Hỗ trợ mảng tư liệu hỗn hợp (cả ảnh & video) trong cùng 1 cảnh
   videoSrc?: string;
   startFrom?: number;
   title?: string;
@@ -37,10 +46,132 @@ export interface SocialContentSceneProps {
   hideTitle?: boolean;
 }
 
+function resolveMediaPath(slug: string, src: string, isLegacyVideo = false): string {
+  if (src.includes('/')) {
+    return `${slug}/${src}`;
+  }
+  return isLegacyVideo ? `${slug}/${src}` : `${slug}/evidence/${src}`;
+}
+
+function computeMediaSlices(items: MediaItem[], totalFrames: number): Array<{item: MediaItem; from: number; duration: number}> {
+  if (items.length === 0) return [];
+  if (items.length === 1) {
+    return [{item: items[0], from: 0, duration: Math.max(1, totalFrames)}];
+  }
+
+  const weights = items.map((it) => (it.type === 'video' ? 1.6 : 1.0));
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+
+  const slices: Array<{item: MediaItem; from: number; duration: number}> = [];
+  let cursor = 0;
+  for (let i = 0; i < items.length; i++) {
+    const isLast = i === items.length - 1;
+    const dur = isLast
+      ? Math.max(1, totalFrames - cursor)
+      : Math.max(15, Math.round((weights[i] / totalWeight) * totalFrames));
+    slices.push({item: items[i], from: cursor, duration: dur});
+    cursor += dur;
+  }
+  return slices;
+}
+
+interface MediaSlideProps {
+  slug: string;
+  item: MediaItem;
+  durationInFrames: number;
+  panDirection: 'left-to-right' | 'right-to-left' | 'vertical-scroll';
+  width: number;
+  height: number;
+  isLegacyVideo?: boolean;
+}
+
+const MediaSlide: React.FC<MediaSlideProps> = ({
+  slug,
+  item,
+  durationInFrames,
+  panDirection,
+  width,
+  height,
+  isLegacyVideo = false,
+}) => {
+  const localFrame = useCurrentFrame();
+  const isScroll = panDirection === 'vertical-scroll';
+
+  const panX = interpolate(
+    localFrame,
+    [0, Math.max(1, durationInFrames)],
+    isScroll ? [0, 0] : panDirection === 'left-to-right' ? [-15, 15] : [15, -15],
+    {extrapolateRight: 'clamp'}
+  );
+  const panY = interpolate(
+    localFrame,
+    [0, Math.max(1, durationInFrames)],
+    isScroll ? [0, -30] : [0, -10],
+    {extrapolateRight: 'clamp'}
+  );
+  const photoScale = interpolate(
+    localFrame,
+    [0, Math.max(1, durationInFrames)],
+    [1.02, 1.08],
+    {extrapolateRight: 'clamp'}
+  );
+
+  const resolvedPath = staticFile(resolveMediaPath(slug, item.src, isLegacyVideo));
+
+  if (item.type === 'video') {
+    return (
+      <div style={{position: 'absolute', inset: 0, width, height, overflow: 'hidden', backgroundColor: '#0A0E1A'}}>
+        <OffthreadVideo
+          src={resolvedPath}
+          startFrom={item.startFrom || 0}
+          muted
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center',
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{position: 'absolute', inset: 0, width, height, overflow: 'hidden'}}>
+      {/* Lớp nền blur dự phòng bao trọn khung: Chống tuyệt đối lỗi viền đen hoặc ảnh co nhỏ */}
+      <Img
+        src={resolvedPath}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width,
+          height,
+          objectFit: 'cover',
+          filter: 'blur(25px) brightness(0.7)',
+          transform: 'scale(1.2)',
+        }}
+      />
+      <Img
+        src={resolvedPath}
+        style={{
+          position: 'relative',
+          width,
+          height,
+          objectFit: 'cover',
+          transform: `scale(${photoScale}) translate(${panX}px, ${panY}px)`,
+        }}
+      />
+    </div>
+  );
+};
+
 export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
   slug,
   image = 'sharp_1.jpg',
   images,
+  media,
   videoSrc,
   startFrom = 0,
   title = '',
@@ -57,34 +188,20 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
   hideTitle = false,
 }) => {
   const frame = useCurrentFrame();
-  const {fps} = useVideoConfig();
+  const {fps, durationInFrames} = useVideoConfig();
 
-  // ─── Pacing Đổi ảnh nhanh (2.5s - 3s / ảnh nếu có danh sách ảnh) ────────────
-  const imageList = images && images.length > 0 ? images : [image];
-  const framesPerImage = Math.round(fps * 2.8);
-  const activeImageIndex = Math.floor(frame / framesPerImage) % imageList.length;
-  const currentImage = imageList[activeImageIndex];
+  // ─── Chuẩn hóa danh sách tư liệu hỗn hợp (media -> videoSrc -> images -> image) ───
+  const isLegacyVideo = !media && Boolean(videoSrc);
+  const mediaList: MediaItem[] =
+    media && media.length > 0
+      ? media
+      : videoSrc
+        ? [{type: 'video', src: videoSrc, startFrom}]
+        : images && images.length > 0
+          ? images.map((src) => ({type: 'image', src}))
+          : [{type: 'image', src: image}];
 
-  // ─── Ken Burns Pan & Scan Motion ──────────────────────────────────────────
-  const isScroll = panDirection === 'vertical-scroll';
-  const panX = interpolate(
-    frame,
-    [0, 300],
-    isScroll ? [0, 0] : panDirection === 'left-to-right' ? [-15, 15] : [15, -15],
-    {extrapolateRight: 'clamp'}
-  );
-  const panY = interpolate(
-    frame,
-    [0, 300],
-    isScroll ? [0, -30] : [0, -10],
-    {extrapolateRight: 'clamp'}
-  );
-  const photoScale = interpolate(
-    frame % framesPerImage,
-    [0, framesPerImage],
-    [1.02, 1.08],
-    {extrapolateRight: 'clamp'}
-  );
+  const mediaSlices = computeMediaSlices(mediaList, durationInFrames);
 
   const titleSpring = spring({frame: frame - 2, fps, config: {damping: 12, mass: 0.7}});
 
@@ -94,7 +211,7 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
   if (layoutMode === 'classic') {
     return (
       <AbsoluteFill style={{backgroundColor: '#0A0E1A', fontFamily, overflow: 'hidden'}}>
-        {/* ── NỬA TRÊN (0 - 1025px): ẢNH THỊ GIÁC CĂNG TRÀN SẮC NÉT (OBJECT-FIT: COVER) ── */}
+        {/* ── NỬA TRÊN (0 - 1040px): TẤT CẢ TƯ LIỆU ẢNH & VIDEO CĂNG TRÀN SẮC NÉT ── */}
         <div
           style={{
             position: 'absolute',
@@ -106,48 +223,24 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
             zIndex: 10,
           }}
         >
-          {/* Lớp nền blur dự phòng bao trọn 1080x1040: Chống tuyệt đối lỗi viền đen hoặc ảnh co nhỏ */}
-          {!videoSrc && (
-            <Img
-              src={staticFile(`${slug}/evidence/${currentImage}`)}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: 1080,
-                height: 1040,
-                objectFit: 'cover',
-                filter: 'blur(25px) brightness(0.7)',
-                transform: 'scale(1.2)',
-              }}
-            />
-          )}
-
-          {videoSrc ? (
-            <OffthreadVideo
-              src={staticFile(`${slug}/${videoSrc}`)}
-              startFrom={startFrom}
-              muted
-              style={{
-                position: 'relative',
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center',
-              }}
-            />
-          ) : (
-            <Img
-              src={staticFile(`${slug}/evidence/${currentImage}`)}
-              style={{
-                position: 'relative',
-                width: 1080,
-                height: 1040,
-                objectFit: 'cover',
-                transform: `scale(${photoScale}) translate(${panX}px, ${panY}px)`,
-              }}
-            />
-          )}
+          {mediaSlices.map((slice, idx) => (
+            <Sequence
+              key={`${slice.item.type}-${slice.item.src}-${idx}`}
+              from={slice.from}
+              durationInFrames={slice.duration}
+              layout="none"
+            >
+              <MediaSlide
+                slug={slug}
+                item={slice.item}
+                durationInFrames={slice.duration}
+                panDirection={idx % 2 === 0 ? panDirection : panDirection === 'left-to-right' ? 'right-to-left' : 'left-to-right'}
+                width={1080}
+                height={1040}
+                isLegacyVideo={isLegacyVideo}
+              />
+            </Sequence>
+          ))}
 
           {/* Viền shadow nhẹ ngăn cách ảnh và banner */}
           <AbsoluteFill
@@ -301,58 +394,39 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
   return (
     <AbsoluteFill style={{backgroundColor: '#0A0E1A', fontFamily, overflow: 'hidden'}}>
       {/* ── Background: Ambient Glow ── */}
-      <AbsoluteFill style={{overflow: 'hidden'}}>
-        {videoSrc ? (
-          <div style={{width: '100%', height: '100%', backgroundColor: '#0A0E1A'}} />
-        ) : (
-          <Img
-            src={staticFile(`${slug}/evidence/${currentImage}`)}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              filter: 'blur(30px) brightness(0.65)',
-              transform: 'scale(1.25)',
-            }}
-          />
-        )}
-      </AbsoluteFill>
+      <AbsoluteFill style={{overflow: 'hidden', backgroundColor: '#0A0E1A'}} />
 
-      {/* ── VÙNG ẢNH LỚN ── */}
+      {/* ── VÙNG ẢNH / VIDEO LỚN ── */}
       <div
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
           right: 0,
+          width: 1080,
           height: 1600,
           overflow: 'hidden',
           zIndex: 10,
         }}
       >
-        {videoSrc ? (
-          <OffthreadVideo
-            src={staticFile(`${slug}/${videoSrc}`)}
-            startFrom={startFrom}
-            muted
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              objectPosition: 'center',
-            }}
-          />
-        ) : (
-          <Img
-            src={staticFile(`${slug}/evidence/${currentImage}`)}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              transform: `scale(${photoScale}) translate(${panX}px, ${panY}px)`,
-            }}
-          />
-        )}
+        {mediaSlices.map((slice, idx) => (
+          <Sequence
+            key={`${slice.item.type}-${slice.item.src}-${idx}`}
+            from={slice.from}
+            durationInFrames={slice.duration}
+            layout="none"
+          >
+            <MediaSlide
+              slug={slug}
+              item={slice.item}
+              durationInFrames={slice.duration}
+              panDirection={idx % 2 === 0 ? panDirection : panDirection === 'left-to-right' ? 'right-to-left' : 'left-to-right'}
+              width={1080}
+              height={1600}
+              isLegacyVideo={isLegacyVideo}
+            />
+          </Sequence>
+        ))}
 
         <AbsoluteFill
           style={{

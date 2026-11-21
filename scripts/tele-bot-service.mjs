@@ -19,6 +19,13 @@ import zlib from 'zlib';
 import { execSync, spawn } from 'child_process';
 import { GoogleGenAI } from '@google/genai';
 import { runScan } from './send-tele-trends.mjs';
+import {
+  extractArticleBodyHtml,
+  extractImagesFromHtml,
+  extractVideosFromHtml,
+  downloadArticleMedia,
+  distributeMediaToScenes,
+} from './article-media.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -243,21 +250,6 @@ function extractDomainName(urlStr) {
   }
 }
 
-// Hàm kiểm tra 2 URL ảnh có cùng một gốc ảnh không (để tránh trùng lặp giữa ảnh thân bài và og:image thu nhỏ)
-function isSameImage(url1, url2) {
-  if (!url1 || !url2) return false;
-  if (url1 === url2) return true;
-  const f1 = url1.split('/').pop().split('?')[0].toLowerCase();
-  const f2 = url2.split('/').pop().split('?')[0].toLowerCase();
-  if (f1 === f2) return true;
-  const stem1 = f1.replace(/-crop-.*$/, '').replace(/-\d+$/, '').slice(0, 25);
-  const stem2 = f2.replace(/-crop-.*$/, '').replace(/-\d+$/, '').slice(0, 25);
-  if (stem1.length >= 10 && stem2.length >= 10 && (stem1.includes(stem2) || stem2.includes(stem1))) {
-    return true;
-  }
-  return false;
-}
-
 async function scrapeArticle(url) {
   const html = await fetchHtml(url);
   const domain = extractDomainName(url);
@@ -272,79 +264,10 @@ async function scrapeArticle(url) {
     if (metaTitle) title = metaTitle[1].trim();
   }
 
-  // 2. Meta tags: og:image, twitter:image, image, thumbnailUrl (Ảnh đại diện chính thức của bài báo)
-  const metaImages = [];
-  const metaRegex = /<meta\s+([^>]+)>/gi;
-  let metaMatch;
-  while ((metaMatch = metaRegex.exec(html)) !== null) {
-    const attrs = metaMatch[1];
-    const isImageMeta = /(?:property|name|itemprop)=["'](?:og:image|twitter:image|image|thumbnailUrl)["']/i.test(attrs);
-    if (isImageMeta) {
-      const c = attrs.match(/content=["']([^"']+)["']/i);
-      if (c && c[1].startsWith('http') && !metaImages.includes(c[1])) {
-        const lower = c[1].toLowerCase();
-        // Loại bỏ logo website, banner chung, default avatar
-        if (
-          !lower.includes('logo') &&
-          !lower.includes('banner') &&
-          !lower.includes('avatar') &&
-          !lower.includes('share') &&
-          !lower.includes('.svg') &&
-          !lower.includes('.gif')
-        ) {
-          metaImages.push(c[1]);
-        }
-      }
-    }
-  }
+  // 2. Tìm CHÍNH XÁC toàn bộ vùng nội dung bài báo (tránh bị cắt cụt bởi thẻ lồng nhau hoặc thẻ <article> tin liên quan)
+  const cleanedHtml = extractArticleBodyHtml(html);
 
-  // Link rel="image_src"
-  const linkRegex = /<link\s+[^>]*rel=["']image_src["'][^>]*href=["']([^"']+)["']/gi;
-  let lMatch;
-  while ((lMatch = linkRegex.exec(html)) !== null) {
-    if (lMatch[1].startsWith('http') && !metaImages.includes(lMatch[1])) {
-      const lower = lMatch[1].toLowerCase();
-      if (!lower.includes('logo') && !lower.includes('banner') && !lower.includes('avatar') && !lower.includes('.svg')) {
-        metaImages.push(lMatch[1]);
-      }
-    }
-  }
-
-  // 3. Tìm CHÍNH XÁC trong vùng nội dung bài báo (article body)
-  let contentHtml = '';
-  const articleTagMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-  if (articleTagMatch) {
-    contentHtml = articleTagMatch[1];
-  } else {
-    // Tìm vị trí bắt đầu của vùng nội dung bài viết
-    const bodySelectors = [
-      'detail-cmain', 'content-detail', 'detail-content', 'fck_detail',
-      'article__content', 'singular-content', 'article-content', 'cms-body', 'body-content'
-    ];
-    let startIdx = -1;
-    for (const sel of bodySelectors) {
-      const match = html.search(new RegExp(`<(?:div|section)[^>]+(?:class|id)=["'][^"']*${sel}`, 'i'));
-      if (match !== -1) {
-        startIdx = match;
-        break;
-      }
-    }
-    if (startIdx !== -1) {
-      // Cắt từ điểm bắt đầu đến footer/sidebar hoặc tối đa 80.000 ký tự
-      const rawChunk = html.slice(startIdx, startIdx + 80000);
-      const cutIdx = rawChunk.search(/<(?:footer|aside|div[^>]+id=["']comment|div[^>]+class=["'][^"']*(?:comment|sidebar|footer))/i);
-      contentHtml = cutIdx !== -1 ? rawChunk.slice(0, cutIdx) : rawChunk;
-    }
-  }
-
-  // Làm sạch mã HTML: loại bỏ triệt để style, script, form, các khối minigame, tin liên quan, quảng cáo
-  const cleanedHtml = (contentHtml || html)
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<form[\s\S]*?<\/form>/gi, '')
-    .replace(/<div[^>]+(?:class|type)=["'][^"']*(?:boxG_|minigame|game-box|box-game|poll|vote|tin_lien_quan|tin-lien-quan|related|suggest|box-share|comment|banner|adbox|quangcao|sidebar)[^"']*["'][\s\S]*?<\/div>/gi, '');
-
-  // 4. Trích xuất Paragraphs từ văn bản sạch (loại bỏ hoàn toàn CSS hay mã rác)
+  // 3. Trích xuất Paragraphs từ văn bản sạch
   const paras = [];
   const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
   let pMatch;
@@ -361,67 +284,17 @@ async function scrapeArticle(url) {
     }
   }
 
-  // 5. Quét ảnh trong thân bài báo (Editorial Body Images)
-  const bodyImages = [];
-  const badClassOrId = /(?:logo|icon|button|avatar|banner|adbox|box-game|minigame|game-box|quangcao|sidebar|tin_lien_quan|tin-lien-quan|sponsor)/i;
-  const imgTagRegex = /<img\s+([^>]+)>/gi;
-  let m;
-  while ((m = imgTagRegex.exec(cleanedHtml)) !== null) {
-    const attrs = m[1];
-
-    // Chỉ lọc bỏ nếu class hoặc id chứa các từ khóa quảng cáo/rác (không lọc rel="lightbox" hay alt của ảnh)
-    const classAndId = ((attrs.match(/class=["']([^"']+)["']/i) || [])[1] || '') + ' ' + ((attrs.match(/id=["']([^"']+)["']/i) || [])[1] || '');
-    if (badClassOrId.test(classAndId)) {
-      continue;
-    }
-
-    // Ưu tiên data-original (ảnh gốc phân giải cao không crop), sau đó tới data-src, và cuối cùng src
-    const origMatch = attrs.match(/data-original=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
-    const dataSrcMatch = attrs.match(/data-src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
-    const srcMatch = attrs.match(/src=["'](https?:\/\/[^"'\s>]+\.(?:jpg|jpeg|png|webp)[^"'\s>]*)/i);
-    const targetMatch = origMatch || dataSrcMatch || srcMatch;
-    if (!targetMatch) continue;
-
-    const link = targetMatch[1].split('?')[0].replace(/["']$/, '');
-    const lower = link.toLowerCase();
-
-    // Kiểm tra URL ảnh
-    const isBadUrl =
-      lower.includes('logo') ||
-      lower.includes('icon') ||
-      lower.includes('avatar') ||
-      lower.includes('banner') ||
-      lower.includes('adbox') ||
-      lower.includes('box-game') ||
-      lower.includes('minigame') ||
-      lower.includes('35x35') ||
-      lower.includes('40x22') ||
-      lower.includes('svg') ||
-      lower.includes('transparent') ||
-      lower.includes('default');
-
-    if (!isBadUrl && !bodyImages.includes(link)) {
-      bodyImages.push(link);
-    }
-  }
-
-  // Kết hợp: Ưu tiên ảnh báo chí gốc trong thân bài (bodyImages) vì là ảnh độ phân giải cao, đầy đủ góc chụp
-  const imgUrls = [...bodyImages];
-
-  // Bổ sung ảnh đại diện (metaImages) nếu chưa có hoặc là ảnh bìa độc lập không trùng thân bài
-  for (const metaImg of metaImages) {
-    const isDup = imgUrls.some((u) => isSameImage(u, metaImg));
-    if (!isDup && !imgUrls.includes(metaImg)) {
-      imgUrls.push(metaImg);
-    }
-  }
+  // 4. Trích xuất ĐẦY ĐỦ TẤT CẢ ảnh & video từ bài viết (hỗ trợ <picture>, srcset, data-original, data-src, signed CDN URL, video mp4/m3u8, JSON-LD...)
+  const imgUrls = extractImagesFromHtml(cleanedHtml, html, url, 24);
+  const videoUrls = extractVideosFromHtml(cleanedHtml, html, url, 8);
 
   return {
     url,
     domain,
     title: title || 'Tin tức nóng trong ngày',
     content: paras.slice(0, 25).join('\n\n'), // Đảm bảo cung cấp đầy đủ dữ liệu thời tiết/sự kiện chi tiết cho AI
-    imgUrls: imgUrls.slice(0, 6), // Chỉ giữ tối đa 6 ảnh báo chí thực thụ từ bài viết
+    imgUrls,
+    videoUrls,
   };
 }
 
@@ -444,183 +317,6 @@ async function searchNewsImages(query) {
     console.warn('[searchNewsImages] Lỗi tìm ảnh báo chí bổ trợ:', e.message);
     return [];
   }
-}
-
-async function downloadAndCropImages(imgUrls, outDir, fallbackQuery = '') {
-  fs.mkdirSync(outDir, { recursive: true });
-  const rawDownloaded = [];
-
-  // Lần 1: Chỉ tải các ảnh báo chí thực thụ được trích xuất từ bài báo
-  for (let i = 0; i < imgUrls.length; i++) {
-    if (rawDownloaded.length >= 4) break;
-    const imgUrl = imgUrls[i];
-    const rawPath = path.join(outDir, `raw_${rawDownloaded.length}.jpg`);
-
-    try {
-      const res = await fetch(imgUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      });
-      if (!res.ok) continue;
-      const arrayBuffer = await res.arrayBuffer();
-      if (arrayBuffer.byteLength < 15360) continue; // Bỏ qua file < 15KB
-
-      fs.writeFileSync(rawPath, Buffer.from(arrayBuffer));
-
-      // Kiểm tra kích thước qua Python PIL: width >= 350, height >= 220, tỷ lệ ảnh chuẩn báo chí 0.45 <= r <= 2.5
-      const checkPy = `python3 -c "
-from PIL import Image
-im = Image.open('${rawPath}')
-w, h = im.size
-if w < 350 or h < 220:
-    exit(1)
-ratio = w / h
-# Bỏ qua banner quảng cáo ngang dài (ratio > 2.5) hoặc dải dọc (ratio < 0.45)
-if ratio < 0.45 or ratio > 2.5:
-    exit(1)
-"`;
-      try {
-        execSync(checkPy);
-        rawDownloaded.push(rawPath);
-        console.log(`  [Ảnh báo chí ${rawDownloaded.length}] Tải thành công ảnh sắc nét: ${imgUrl.slice(0, 75)}...`);
-      } catch (e) {
-        if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
-      }
-    } catch (e) {}
-  }
-
-  // Lần 2: CHỈ KHI bài báo không có ảnh nào (0 ảnh) hoặc người dùng gửi text, mới kích hoạt tìm kiếm ảnh báo chí
-  if (rawDownloaded.length === 0 && fallbackQuery) {
-    console.log(`🔍 Bài viết không có ảnh sẵn, đang tìm kiếm ảnh báo chí thực tế cho: "${fallbackQuery.slice(0, 60)}"...`);
-    const searched = await searchNewsImages(fallbackQuery);
-    for (let i = 0; i < searched.length; i++) {
-      if (rawDownloaded.length >= 4) break;
-      const imgUrl = searched[i];
-      const rawPath = path.join(outDir, `raw_${rawDownloaded.length}.jpg`);
-
-      try {
-        const res = await fetch(imgUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-        });
-        if (!res.ok) continue;
-        const arrayBuffer = await res.arrayBuffer();
-        if (arrayBuffer.byteLength < 15360) continue;
-        fs.writeFileSync(rawPath, Buffer.from(arrayBuffer));
-
-        const checkPy = `python3 -c "
-from PIL import Image
-im = Image.open('${rawPath}')
-w, h = im.size
-if w < 350 or h < 220:
-    exit(1)
-ratio = w / h
-if ratio < 0.45 or ratio > 2.5:
-    exit(1)
-"`;
-        try {
-          execSync(checkPy);
-          rawDownloaded.push(rawPath);
-          console.log(`  [Ảnh tìm kiếm ${rawDownloaded.length}] Tải thành công ảnh báo chí: ${imgUrl.slice(0, 75)}...`);
-        } catch (e) {
-          if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
-        }
-      } catch (e) {}
-    }
-  }
-
-  const savedImages = [];
-
-  // Tạo trọn bộ 4 ảnh crop 1080x1040 CHỈ TỪ CÁC ẢNH CHÍNH THỨC CỦA BÀI BÁO (Không dùng bất kỳ ảnh ngoài nào!)
-  if (rawDownloaded.length > 0) {
-    const pyScript = `python3 -c "
-from PIL import Image
-import os
-
-target_w, target_h = 1080, 1040
-target_ratio = target_w / target_h
-
-def make_center_crop(im):
-    w, h = im.size
-    current_ratio = w / h
-    if current_ratio > target_ratio:
-        nw = int(h * target_ratio)
-        left = (w - nw) // 2
-        c = im.crop((left, 0, left + nw, h))
-    else:
-        nh = int(w / target_ratio)
-        top = (h - nh) // 2
-        c = im.crop((0, top, w, top + nh))
-    return c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB')
-
-def make_zoom_crop(base, zoom_factor=0.85):
-    margin_w = int(target_w * (1 - zoom_factor) / 2)
-    margin_h = int(target_h * (1 - zoom_factor) / 2)
-    z = base.crop((margin_w, margin_h, target_w - margin_w, target_h - margin_h))
-    return z.resize((target_w, target_h), Image.Resampling.LANCZOS)
-
-def make_upper_crop(base):
-    u = base.crop((0, 0, target_w, int(target_h * 0.85)))
-    return u.resize((target_w, target_h), Image.Resampling.LANCZOS)
-
-out_dir = '${outDir}'
-raw_count = ${rawDownloaded.length}
-
-if raw_count == 1:
-    im0 = Image.open('${rawDownloaded[0]}')
-    b0 = make_center_crop(im0)
-    b0.save(os.path.join(out_dir, 'crop_0.jpg'), quality=95)
-    make_zoom_crop(b0, 0.85).save(os.path.join(out_dir, 'crop_1.jpg'), quality=95)
-    make_zoom_crop(b0, 0.75).save(os.path.join(out_dir, 'crop_2.jpg'), quality=95)
-    make_upper_crop(b0).save(os.path.join(out_dir, 'crop_3.jpg'), quality=95)
-
-elif raw_count == 2:
-    im0 = Image.open('${rawDownloaded[0]}')
-    im1 = Image.open('${rawDownloaded[1]}')
-    b0 = make_center_crop(im0)
-    b1 = make_center_crop(im1)
-    b0.save(os.path.join(out_dir, 'crop_0.jpg'), quality=95)
-    b1.save(os.path.join(out_dir, 'crop_1.jpg'), quality=95)
-    make_zoom_crop(b0, 0.85).save(os.path.join(out_dir, 'crop_2.jpg'), quality=95)
-    make_zoom_crop(b1, 0.85).save(os.path.join(out_dir, 'crop_3.jpg'), quality=95)
-
-elif raw_count == 3:
-    im0 = Image.open('${rawDownloaded[0]}')
-    im1 = Image.open('${rawDownloaded[1]}')
-    im2 = Image.open('${rawDownloaded[2]}')
-    b0 = make_center_crop(im0)
-    b1 = make_center_crop(im1)
-    b2 = make_center_crop(im2)
-    b0.save(os.path.join(out_dir, 'crop_0.jpg'), quality=95)
-    b1.save(os.path.join(out_dir, 'crop_1.jpg'), quality=95)
-    b2.save(os.path.join(out_dir, 'crop_2.jpg'), quality=95)
-    make_zoom_crop(b0, 0.85).save(os.path.join(out_dir, 'crop_3.jpg'), quality=95)
-
-else:
-    for i in range(4):
-        raw_p = '${path.join(outDir, 'raw_')}' + str(i) + '.jpg'
-        b = make_center_crop(Image.open(raw_p))
-        b.save(os.path.join(out_dir, f'crop_{i}.jpg'), quality=95)
-"`;
-    try {
-      execSync(pyScript);
-      savedImages.push('crop_0.jpg', 'crop_1.jpg', 'crop_2.jpg', 'crop_3.jpg');
-    } catch (e) {
-      console.error('Lỗi crop ảnh bài báo:', e.message);
-    }
-  }
-
-  // Fallback cực đoan: Nếu không có bất kỳ ảnh nào
-  if (savedImages.length === 0) {
-    const fallbackSource = path.join(ROOT, 'public/assets/news/default_news_bg.jpg');
-    for (let i = 0; i < 4; i++) {
-      const cropPath = path.join(outDir, `crop_${i}.jpg`);
-      if (fs.existsSync(fallbackSource)) {
-        fs.copyFileSync(fallbackSource, cropPath);
-      }
-      savedImages.push(`crop_${i}.jpg`);
-    }
-  }
-
-  return savedImages;
 }
 
 // ─── AI Script Generation with Gemini ───────────────────────────────────────
@@ -873,17 +569,37 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
         title: firstLine.slice(0, 80),
         content: urlOrText,
         imgUrls: [],
+        videoUrls: [],
       };
     }
-    console.log(`[${slug}] Đã tiếp nhận nội dung: ${articleData.title}`);
+    console.log(
+      `[${slug}] Đã tiếp nhận nội dung: ${articleData.title} (Tìm thấy ${articleData.imgUrls.length} link ảnh, ${articleData.videoUrls.length} link video)`
+    );
 
-    // Tải & crop ảnh (Bằng mọi giá phải có ảnh báo chí thực tế, tự động tìm kiếm web nếu trang thiếu ảnh)
+    // Tải ĐẦY ĐỦ tất cả tư liệu ảnh & video từ bài báo (chỉ tìm web bổ trợ nếu bài viết không có bất kỳ ảnh/video nào)
     const evidenceDir = path.join(ROOT, `public/${slug}/evidence`);
-    const savedImages = await downloadAndCropImages(articleData.imgUrls, evidenceDir, articleData.title);
-    console.log(`[${slug}] Đã chuẩn bị ${savedImages.length} ảnh hiển thị.`);
+    const mediaResult = await downloadArticleMedia({
+      imgUrls: articleData.imgUrls,
+      videoUrls: articleData.videoUrls,
+      outDir: evidenceDir,
+      articleUrl: articleData.url,
+      fallbackQuery: articleData.title,
+      searchNewsImagesFn: searchNewsImages,
+      fallbackImageSource: path.join(ROOT, 'public/assets/news/default_news_bg.jpg'),
+    });
+    console.log(
+      `[${slug}] Đã chuẩn bị ĐẦY ĐỦ tư liệu: ${mediaResult.rawImageCount} ảnh gốc (${mediaResult.savedImages.length} ảnh hiển thị) + ${mediaResult.rawVideoCount} video tư liệu = ${mediaResult.mediaItems.length} tư liệu ghép vào video.`
+    );
 
     // 2. Viết kịch bản bằng Gemini AI
-    await sendMessage(`✍️ <i>Bước 2/5: AI đang biên tập kịch bản 4 cảnh giật gân chuẩn Hóng Hớt 24/7 (khoảng ${targetDuration}s)...</i>`, replyMessageId);
+    const mediaSummary =
+      mediaResult.rawVideoCount > 0
+        ? `${mediaResult.rawImageCount} ảnh & ${mediaResult.rawVideoCount} video tư liệu`
+        : `${mediaResult.rawImageCount || mediaResult.savedImages.length} ảnh tư liệu`;
+    await sendMessage(
+      `📸 Đã thu thập đầy đủ <b>${mediaSummary}</b> từ bài báo!\n✍️ <i>Bước 2/5: AI đang biên tập kịch bản 4 cảnh giật gân chuẩn Hóng Hớt 24/7 (khoảng ${targetDuration}s)...</i>`,
+      replyMessageId
+    );
     await sendChatAction('typing');
 
     const scriptData = await generateVideoScript(articleData, targetDuration);
@@ -963,11 +679,8 @@ export const COLORS = {
     rootContent = rootContent.replace(/slug:\s*['"][^'"]+['"]/, `slug: '${slug}'`);
     fs.writeFileSync(rootPath, rootContent);
 
-    // Cập nhật VideoContent.tsx
-    const s1_imgs = savedImages.length >= 2 ? [savedImages[0], savedImages[1]] : [savedImages[0] || 'crop_0.jpg'];
-    const s2_imgs = savedImages.length >= 4 ? [savedImages[2], savedImages[3]] : (savedImages.length >= 2 ? [savedImages[1], savedImages[0]] : s1_imgs);
-    const s3_imgs = savedImages.length >= 6 ? [savedImages[4], savedImages[5]] : (savedImages.length >= 3 ? [savedImages[2], savedImages[0]] : s1_imgs);
-    const s4_imgs = savedImages.length >= 4 ? [savedImages[3], savedImages[1]] : s1_imgs;
+    // Cập nhật VideoContent.tsx — Phân bổ ĐẦY ĐỦ tất cả ảnh & video tư liệu vào 4 cảnh
+    const [s1_media, s2_media, s3_media, s4_media] = distributeMediaToScenes(mediaResult.mediaItems, 4);
     const todayStr = `${new Date().getDate()}/${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
 
     const videoContentCode = `import React from 'react';
@@ -1009,7 +722,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[0]} premountFor={30}>
           <SocialContentScene
             slug={slug}
-            images={${JSON.stringify(s1_imgs)}}
+            media={${JSON.stringify(s1_media)}}
             title="${scriptData.scenes[0].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[0].subtitle.replace(/"/g, '\\"')}"
             source="THEO: ${articleData.domain}"
@@ -1027,7 +740,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[1]} premountFor={30}>
           <SocialContentScene
             slug={slug}
-            images={${JSON.stringify(s2_imgs)}}
+            media={${JSON.stringify(s2_media)}}
             title="${scriptData.scenes[1].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[1].subtitle.replace(/"/g, '\\"')}"
             source="THEO: ${articleData.domain}"
@@ -1045,7 +758,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[2]} premountFor={30}>
           <SocialContentScene
             slug={slug}
-            images={${JSON.stringify(s3_imgs)}}
+            media={${JSON.stringify(s3_media)}}
             title="${scriptData.scenes[2].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[2].subtitle.replace(/"/g, '\\"')}"
             source="THEO: ${articleData.domain}"
@@ -1063,7 +776,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[3]} premountFor={30}>
           <SocialContentScene
             slug={slug}
-            images={${JSON.stringify(s4_imgs)}}
+            media={${JSON.stringify(s4_media)}}
             title="${scriptData.scenes[3].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[3].subtitle.replace(/"/g, '\\"')}"
             source="THEO: ${articleData.domain}"
