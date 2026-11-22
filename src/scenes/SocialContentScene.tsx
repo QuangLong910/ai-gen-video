@@ -12,18 +12,22 @@ import {
 } from 'remotion';
 import {loadFont} from '@remotion/google-fonts/BeVietnamPro';
 import {NewsHeader} from './NewsHeader';
+import {
+  computeImageMotionStyle,
+  computeOverlappingMediaSlices,
+  easeOutCubic,
+  clamp01,
+  type ImageMotionPreset,
+  type MediaItem,
+  type SlideTransitionType,
+} from './imageMotion';
+
+export type {MediaItem, ImageMotionPreset};
 
 const {fontFamily} = loadFont('normal', {
   weights: ['600', '700', '800', '900'],
   subsets: ['latin', 'vietnamese'],
 });
-
-export interface MediaItem {
-  type: 'image' | 'video';
-  src: string;
-  startFrom?: number;
-  durationSec?: number;
-}
 
 export interface SocialContentSceneProps {
   slug: string;
@@ -37,6 +41,8 @@ export interface SocialContentSceneProps {
   source?: string;
   date?: string;
   panDirection?: 'left-to-right' | 'right-to-left' | 'vertical-scroll';
+  sceneIndex?: number;
+  motionPreset?: ImageMotionPreset;
   keepBanner?: boolean;
   channelName?: string;
   watermarkSrc?: string;
@@ -53,33 +59,15 @@ function resolveMediaPath(slug: string, src: string, isLegacyVideo = false): str
   return isLegacyVideo ? `${slug}/${src}` : `${slug}/evidence/${src}`;
 }
 
-function computeMediaSlices(items: MediaItem[], totalFrames: number): Array<{item: MediaItem; from: number; duration: number}> {
-  if (items.length === 0) return [];
-  if (items.length === 1) {
-    return [{item: items[0], from: 0, duration: Math.max(1, totalFrames)}];
-  }
-
-  const weights = items.map((it) => (it.type === 'video' ? 1.6 : 1.0));
-  const totalWeight = weights.reduce((a, b) => a + b, 0);
-
-  const slices: Array<{item: MediaItem; from: number; duration: number}> = [];
-  let cursor = 0;
-  for (let i = 0; i < items.length; i++) {
-    const isLast = i === items.length - 1;
-    const dur = isLast
-      ? Math.max(1, totalFrames - cursor)
-      : Math.max(15, Math.round((weights[i] / totalWeight) * totalFrames));
-    slices.push({item: items[i], from: cursor, duration: dur});
-    cursor += dur;
-  }
-  return slices;
-}
-
 interface MediaSlideProps {
   slug: string;
   item: MediaItem;
   durationInFrames: number;
-  panDirection: 'left-to-right' | 'right-to-left' | 'vertical-scroll';
+  preset: ImageMotionPreset;
+  enterFrames: number;
+  transition: SlideTransitionType;
+  isFirstSlide: boolean;
+  zIndex: number;
   width: number;
   height: number;
   isLegacyVideo?: boolean;
@@ -89,38 +77,41 @@ const MediaSlide: React.FC<MediaSlideProps> = ({
   slug,
   item,
   durationInFrames,
-  panDirection,
+  preset,
+  enterFrames,
+  transition,
+  isFirstSlide,
+  zIndex,
   width,
   height,
   isLegacyVideo = false,
 }) => {
   const localFrame = useCurrentFrame();
-  const isScroll = panDirection === 'vertical-scroll';
-
-  const panX = interpolate(
-    localFrame,
-    [0, Math.max(1, durationInFrames)],
-    isScroll ? [0, 0] : panDirection === 'left-to-right' ? [-15, 15] : [15, -15],
-    {extrapolateRight: 'clamp'}
-  );
-  const panY = interpolate(
-    localFrame,
-    [0, Math.max(1, durationInFrames)],
-    isScroll ? [0, -30] : [0, -10],
-    {extrapolateRight: 'clamp'}
-  );
-  const photoScale = interpolate(
-    localFrame,
-    [0, Math.max(1, durationInFrames)],
-    [1.02, 1.08],
-    {extrapolateRight: 'clamp'}
-  );
-
   const resolvedPath = staticFile(resolveMediaPath(slug, item.src, isLegacyVideo));
 
   if (item.type === 'video') {
+    const videoOpacity =
+      !isFirstSlide && enterFrames > 0 ? easeOutCubic(clamp01(localFrame / enterFrames)) : 1;
+    const videoScale = interpolate(
+      localFrame,
+      [0, Math.max(1, durationInFrames)],
+      [1.0, 1.04],
+      {extrapolateRight: 'clamp'}
+    );
+
     return (
-      <div style={{position: 'absolute', inset: 0, width, height, overflow: 'hidden', backgroundColor: '#0A0E1A'}}>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width,
+          height,
+          overflow: 'hidden',
+          backgroundColor: '#0A0E1A',
+          opacity: videoOpacity,
+          zIndex,
+        }}
+      >
         <OffthreadVideo
           src={resolvedPath}
           startFrom={item.startFrom || 0}
@@ -131,15 +122,38 @@ const MediaSlide: React.FC<MediaSlideProps> = ({
             height: '100%',
             objectFit: 'cover',
             objectPosition: 'center',
+            transform: `scale(${videoScale.toFixed(4)})`,
           }}
         />
       </div>
     );
   }
 
+  const style = computeImageMotionStyle({
+    localFrame,
+    durationInFrames,
+    preset,
+    enterFrames,
+    transition,
+    isFirstSlide,
+  });
+
+  const sweepProgress = clamp01(localFrame / Math.max(1, durationInFrames));
+  const sweepX = interpolate(sweepProgress, [0, 1], [-60, 60]);
+
   return (
-    <div style={{position: 'absolute', inset: 0, width, height, overflow: 'hidden'}}>
-      {/* Lớp nền blur dự phòng bao trọn khung: Chống tuyệt đối lỗi viền đen hoặc ảnh co nhỏ */}
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width,
+        height,
+        overflow: 'hidden',
+        opacity: style.opacity,
+        zIndex,
+      }}
+    >
+      {/* Lớp nền blur dự phòng bao trọn khung: Chống tuyệt đối lỗi viền đen hoặc ảnh co nhỏ + parallax nhẹ */}
       <Img
         src={resolvedPath}
         style={{
@@ -150,7 +164,7 @@ const MediaSlide: React.FC<MediaSlideProps> = ({
           height,
           objectFit: 'cover',
           filter: 'blur(25px) brightness(0.7)',
-          transform: 'scale(1.2)',
+          transform: `translate3d(${(-style.translateX * 0.25).toFixed(1)}px, ${(-style.translateY * 0.25).toFixed(1)}px, 0) scale(1.22)`,
         }}
       />
       <Img
@@ -160,9 +174,33 @@ const MediaSlide: React.FC<MediaSlideProps> = ({
           width,
           height,
           objectFit: 'cover',
-          transform: `scale(${photoScale}) translate(${panX}px, ${panY}px)`,
+          transform: style.transform,
+          filter: style.brightness > 1.005 ? `brightness(${style.brightness.toFixed(3)})` : undefined,
+          willChange: 'transform',
         }}
       />
+      {/* Cinematic light sweep */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background:
+            'linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.07) 50%, transparent 65%)',
+          transform: `translateX(${sweepX.toFixed(1)}%)`,
+        }}
+      />
+      {/* Flash highlight cho zoom-flash transition */}
+      {style.flashOpacity > 0.005 && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            backgroundColor: `rgba(255,255,255,${style.flashOpacity.toFixed(3)})`,
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -179,6 +217,8 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
   source = 'THEO: BÁO DÂN TRÍ',
   date = '12/11/2026',
   panDirection = 'left-to-right',
+  sceneIndex = 0,
+  motionPreset,
   keepBanner = true,
   channelName = 'HÓNG HỚT 24/7',
   watermarkSrc = 'watermark.png',
@@ -201,7 +241,14 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
           ? images.map((src) => ({type: 'image', src}))
           : [{type: 'image', src: image}];
 
-  const mediaSlices = computeMediaSlices(mediaList, durationInFrames);
+  const mediaSlices = computeOverlappingMediaSlices(
+    mediaList,
+    durationInFrames,
+    sceneIndex,
+    panDirection,
+    undefined,
+    motionPreset
+  );
 
   const titleSpring = spring({frame: frame - 2, fps, config: {damping: 12, mass: 0.7}});
 
@@ -223,28 +270,36 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
             zIndex: 10,
           }}
         >
-          {mediaSlices.map((slice, idx) => (
-            <Sequence
-              key={`${slice.item.type}-${slice.item.src}-${idx}`}
-              from={slice.from}
-              durationInFrames={slice.duration}
-              layout="none"
-            >
-              <MediaSlide
-                slug={slug}
-                item={slice.item}
+          <div style={{position: 'absolute', inset: 0, zIndex: 1}}>
+            {mediaSlices.map((slice, idx) => (
+              <Sequence
+                key={`${slice.item.type}-${slice.item.src}-${idx}`}
+                from={slice.from}
                 durationInFrames={slice.duration}
-                panDirection={idx % 2 === 0 ? panDirection : panDirection === 'left-to-right' ? 'right-to-left' : 'left-to-right'}
-                width={1080}
-                height={1040}
-                isLegacyVideo={isLegacyVideo}
-              />
-            </Sequence>
-          ))}
+                layout="none"
+              >
+                <MediaSlide
+                  slug={slug}
+                  item={slice.item}
+                  durationInFrames={slice.duration}
+                  preset={slice.motionPreset}
+                  enterFrames={slice.enterFrames}
+                  transition={slice.transition}
+                  isFirstSlide={idx === 0}
+                  zIndex={idx + 1}
+                  width={1080}
+                  height={1040}
+                  isLegacyVideo={isLegacyVideo}
+                />
+              </Sequence>
+            ))}
+          </div>
 
           {/* Viền shadow nhẹ ngăn cách ảnh và banner */}
           <AbsoluteFill
             style={{
+              zIndex: 10,
+              pointerEvents: 'none',
               background:
                 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.9) 100%)',
             }}
@@ -409,27 +464,35 @@ export const SocialContentScene: React.FC<SocialContentSceneProps> = ({
           zIndex: 10,
         }}
       >
-        {mediaSlices.map((slice, idx) => (
-          <Sequence
-            key={`${slice.item.type}-${slice.item.src}-${idx}`}
-            from={slice.from}
-            durationInFrames={slice.duration}
-            layout="none"
-          >
-            <MediaSlide
-              slug={slug}
-              item={slice.item}
+        <div style={{position: 'absolute', inset: 0, zIndex: 1}}>
+          {mediaSlices.map((slice, idx) => (
+            <Sequence
+              key={`${slice.item.type}-${slice.item.src}-${idx}`}
+              from={slice.from}
               durationInFrames={slice.duration}
-              panDirection={idx % 2 === 0 ? panDirection : panDirection === 'left-to-right' ? 'right-to-left' : 'left-to-right'}
-              width={1080}
-              height={1600}
-              isLegacyVideo={isLegacyVideo}
-            />
-          </Sequence>
-        ))}
+              layout="none"
+            >
+              <MediaSlide
+                slug={slug}
+                item={slice.item}
+                durationInFrames={slice.duration}
+                preset={slice.motionPreset}
+                enterFrames={slice.enterFrames}
+                transition={slice.transition}
+                isFirstSlide={idx === 0}
+                zIndex={idx + 1}
+                width={1080}
+                height={1600}
+                isLegacyVideo={isLegacyVideo}
+              />
+            </Sequence>
+          ))}
+        </div>
 
         <AbsoluteFill
           style={{
+            zIndex: 10,
+            pointerEvents: 'none',
             background:
               'linear-gradient(180deg, rgba(10, 14, 26, 0.80) 0%, rgba(10, 14, 26, 0.20) 25%, rgba(10, 14, 26, 0.35) 60%, rgba(10, 14, 26, 0.90) 100%)',
           }}

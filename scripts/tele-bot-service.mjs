@@ -685,9 +685,9 @@ export const COLORS = {
 
     const videoContentCode = `import React from 'react';
 import {Audio, staticFile, useVideoConfig} from 'remotion';
-import {TransitionSeries, linearTiming} from '@remotion/transitions';
-import {fade} from '@remotion/transitions/fade';
+import {TransitionSeries, linearTiming, springTiming} from '@remotion/transitions';
 import {slide} from '@remotion/transitions/slide';
+import {wipe} from '@remotion/transitions/wipe';
 import {SocialContentScene} from './scenes/SocialContentScene';
 import {Subtitles} from './components/Subtitles';
 import {SCENE1_DUR, SCENE2_DUR, SCENE3_DUR, SCENE4_DUR, TOTAL_FRAMES} from './scenes/tokens';
@@ -702,9 +702,10 @@ export const VideoContent: React.FC<VideoContentProps> = ({
   showSubtitles = false,
 }) => {
   const transitionTiming = linearTiming({durationInFrames: 15});
-  const transition1 = {presentation: fade(), timing: transitionTiming};
-  const transition2 = {presentation: slide({direction: 'from-right'}), timing: transitionTiming};
-  const transition3 = {presentation: fade(), timing: transitionTiming};
+  const springTransitionTiming = springTiming({durationInFrames: 15, config: {damping: 200}});
+  const transition1 = {presentation: slide({direction: 'from-right'}), timing: springTransitionTiming};
+  const transition2 = {presentation: wipe({direction: 'from-left'}), timing: transitionTiming};
+  const transition3 = {presentation: slide({direction: 'from-bottom'}), timing: springTransitionTiming};
 
   const sequenceDurations = [
     SCENE1_DUR + 15,
@@ -722,6 +723,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[0]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={0}
             media={${JSON.stringify(s1_media)}}
             title="${scriptData.scenes[0].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[0].subtitle.replace(/"/g, '\\"')}"
@@ -740,6 +742,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[1]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={1}
             media={${JSON.stringify(s2_media)}}
             title="${scriptData.scenes[1].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[1].subtitle.replace(/"/g, '\\"')}"
@@ -758,6 +761,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[2]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={2}
             media={${JSON.stringify(s3_media)}}
             title="${scriptData.scenes[2].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[2].subtitle.replace(/"/g, '\\"')}"
@@ -776,6 +780,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[3]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={3}
             media={${JSON.stringify(s4_media)}}
             title="${scriptData.scenes[3].title.replace(/"/g, '\\"')}"
             subtitle="${scriptData.scenes[3].subtitle.replace(/"/g, '\\"')}"

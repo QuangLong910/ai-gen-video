@@ -1,8 +1,8 @@
 import React from 'react';
 import {Audio, staticFile, useVideoConfig} from 'remotion';
-import {TransitionSeries, linearTiming} from '@remotion/transitions';
-import {fade} from '@remotion/transitions/fade';
+import {TransitionSeries, linearTiming, springTiming} from '@remotion/transitions';
 import {slide} from '@remotion/transitions/slide';
+import {wipe} from '@remotion/transitions/wipe';
 import {SocialContentScene} from './scenes/SocialContentScene';
 import {Subtitles} from './components/Subtitles';
 import {SCENE1_DUR, SCENE2_DUR, SCENE3_DUR, SCENE4_DUR, TOTAL_FRAMES} from './scenes/tokens';
@@ -17,9 +17,10 @@ export const VideoContent: React.FC<VideoContentProps> = ({
   showSubtitles = false,
 }) => {
   const transitionTiming = linearTiming({durationInFrames: 15});
-  const transition1 = {presentation: fade(), timing: transitionTiming};
-  const transition2 = {presentation: slide({direction: 'from-right'}), timing: transitionTiming};
-  const transition3 = {presentation: fade(), timing: transitionTiming};
+  const springTransitionTiming = springTiming({durationInFrames: 15, config: {damping: 200}});
+  const transition1 = {presentation: slide({direction: 'from-right'}), timing: springTransitionTiming};
+  const transition2 = {presentation: wipe({direction: 'from-left'}), timing: transitionTiming};
+  const transition3 = {presentation: slide({direction: 'from-bottom'}), timing: springTransitionTiming};
 
   const sequenceDurations = [
     SCENE1_DUR + 15,
@@ -37,6 +38,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[0]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={0}
             images={["crop_0.jpg","crop_1.jpg"]}
             title="U17 PHÁP THỊ UY SỨC MẠNH"
             subtitle="U17 Pháp thể hiện sức mạnh áp đảo tại U17 World Cup"
@@ -55,6 +57,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[1]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={1}
             images={["crop_2.jpg","crop_3.jpg"]}
             title="MERRIFIELD TỎA SÁNG RỰC RỠ"
             subtitle="Merrifield lập cú đúp đưa U17 Pháp vươn lên dẫn trước"
@@ -73,6 +76,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[2]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={2}
             images={["crop_2.jpg","crop_0.jpg"]}
             title="ĐẲNG CẤP ĐỘI TRẺ"
             subtitle="Noha Tiehi ghi bàn nâng tỷ số lên ba không cho U17 Pháp"
@@ -91,6 +95,7 @@ export const VideoContent: React.FC<VideoContentProps> = ({
         <TransitionSeries.Sequence durationInFrames={sequenceDurations[3]} premountFor={30}>
           <SocialContentScene
             slug={slug}
+            sceneIndex={3}
             images={["crop_3.jpg","crop_1.jpg"]}
             title="CHIẾN THẮNG THUYẾT PHỤC"
             subtitle="Chung cuộc U17 Pháp đánh bại U17 Haiti với tỷ số ba một"
