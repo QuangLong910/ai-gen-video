@@ -26,6 +26,15 @@ import {
   downloadArticleMedia,
   distributeMediaToScenes,
 } from './article-media.mjs';
+import {
+  loadBotMemory,
+  saveBotMemory,
+  updateLastJob,
+  addCustomDirective,
+  removeCustomDirective,
+  clearCustomDirectives,
+  analyzeUserMessage,
+} from './tele-bot-brain.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -320,7 +329,7 @@ async function searchNewsImages(query) {
 }
 
 // ─── AI Script Generation with Gemini ───────────────────────────────────────
-async function generateVideoScript(articleData, targetDuration = 38) {
+async function generateVideoScript(articleData, targetDuration = 38, userFeedback = null) {
   if (!ai) throw new Error('GEMINI_API_KEY chưa được cấu hình');
 
   let lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, tổng số từ khoảng 140 - 160 từ tiếng Việt (tương đương 35 - 38 giây đọc).';
@@ -330,6 +339,23 @@ async function generateVideoScript(articleData, targetDuration = 38) {
     lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, chi tiết rõ ràng, đầy đủ, tổng số từ khoảng 165 - 185 từ tiếng Việt (tương đương 42 - 47 giây đọc).';
   } else if (targetDuration > 50) {
     lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, phân tích sâu và kỹ lưỡng, tổng số từ khoảng 210 - 240 từ tiếng Việt (tương đương 55 - 60 giây đọc).';
+  }
+
+  let feedbackSection = '';
+  if (userFeedback && typeof userFeedback === 'string' && userFeedback.trim()) {
+    feedbackSection = `
+6. ⚠️ CHỈ ĐẠO ĐẶC BIỆT / GÓP Ý SỬA LỖI TỪ BIÊN TẬP VIÊN (BẮT BUỘC TUÂN THỦ 100%):
+Chủ kênh đã gửi chỉ đạo sửa kịch bản cho video này như sau:
+"${userFeedback.trim()}"
+=> BẮT BUỘC biên tập lại kịch bản để đáp ứng chính xác 100% chỉ đạo trên (sửa đổi nội dung, câu từ, chi tiết, hoặc số liệu theo đúng chỉ đạo)!`;
+  }
+
+  const memory = loadBotMemory();
+  let directivesSection = '';
+  if (memory.customDirectives && memory.customDirectives.length > 0) {
+    directivesSection = `
+7. CÁC NGUYÊN TẮC / DẶN DÒ TỪ CHỦ KÊNH ĐÃ LƯU TRONG BỘ NHỚ:
+${memory.customDirectives.map((d, i) => `   - [Quy tắc ${i + 1}]: ${d}`).join('\n')}`;
   }
 
   const prompt = `Bạn là biên tập viên tin tức hàng đầu của kênh mạng xã hội "HÓNG HỚT 24/7" (TikTok, Reels, Shorts).
@@ -359,6 +385,8 @@ ${lengthReq}
    - subtitle: 1 câu tóm tắt nội dung cảnh đó (khoảng 10-14 từ).
    - categoryTag: 1 tag cảm xúc có icon (ví dụ: "🚨 TIN CỰC NÓNG", "⛈️ DỰ BÁO THỜI TIẾT", "⚖️ PHÁP LUẬT").
 5. CAPTION & 5 HASHTAG: Tạo caption đăng mạng xã hội và CHỈ DÙNG TỐI ĐA 5 HASHTAG (chọn 5 hashtag đắt giá, cô đọng nhất).
+${feedbackSection}
+${directivesSection}
 
 TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
 {
@@ -508,6 +536,17 @@ let isProcessingJob = false;
 let lastArticleUrl = '';
 let lastSlug = '';
 
+// Nạp bài gần nhất và các quy tắc từ bộ nhớ bền vững (videos/.bot-memory.json)
+const bootMemory = loadBotMemory();
+if (bootMemory.lastJob) {
+  lastArticleUrl = bootMemory.lastJob.urlOrText || '';
+  lastSlug = bootMemory.lastJob.slug || '';
+  console.log(`[BotBrain] Đã nạp bài gần nhất từ bộ nhớ: "${bootMemory.lastJob.articleTitle}"`);
+}
+if (bootMemory.customDirectives && bootMemory.customDirectives.length > 0) {
+  console.log(`[BotBrain] Đang kích hoạt ${bootMemory.customDirectives.length} quy tắc dặn dò của chủ kênh.`);
+}
+
 async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
   if (isProcessingJob) {
     await sendMessage('⚠️ <b>Hệ thống đang render một video khác!</b>\nNếu bị treo lâu, bạn hãy gửi tin nhắn <code>reset</code> để gỡ treo ngay lập tức nhé.', replyMessageId);
@@ -602,7 +641,7 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
     );
     await sendChatAction('typing');
 
-    const scriptData = await generateVideoScript(articleData, targetDuration);
+    const scriptData = await generateVideoScript(articleData, targetDuration, options.userFeedback);
     const scriptDir = path.join(ROOT, `videos/${slug}/script`);
     fs.mkdirSync(scriptDir, { recursive: true });
 
@@ -860,6 +899,17 @@ export const VideoContent: React.FC<VideoContentProps> = ({
     }
 
     await sendMessage(finishMsg, replyMessageId);
+
+    // Lưu vào bộ nhớ bot lâu dài để người dùng phản hồi/báo lỗi bất cứ lúc nào
+    updateLastJob({
+      urlOrText,
+      articleTitle: articleData.title,
+      articleDomain: articleData.domain,
+      articleContentSnippet: articleData.content ? articleData.content.slice(0, 500) : '',
+      slug,
+      targetDuration,
+      scriptSummary: scriptData.scenes.map((s) => `[Cảnh ${s.id}]: ${s.text}`).join(' '),
+    });
   } catch (error) {
     console.error('❌ Lỗi quy trình tạo video:', error);
     await sendMessage(`❌ <b>Lỗi trong quá trình tạo video:</b>\n<code>${error.message}</code>`, replyMessageId);
@@ -907,108 +957,159 @@ async function pollTelegramUpdates() {
         // 2. Trợ giúp & Bắt đầu
         if (text === '/start' || text === '/help') {
           const helpText = `👋 <b>Chào mừng bạn đến với Hóng Hớt 24/7 AI Bot!</b>\n\n` +
-            `🎯 <b>CÁC LỆNH BẠN CÓ THỂ DÙNG TRÊN ĐIỆN THOẠI:</b>\n\n` +
+            `🎯 <b>CÁC KHẢ NĂNG THÔNG MINH TRÊN ĐIỆN THOẠI:</b>\n\n` +
             `1️⃣ <b>Tạo video tự động:</b>\n` +
             `👉 Gửi trực tiếp <b>link bài báo</b> (Tuổi Trẻ, Dân Trí, VnExpress, Tiền Phong...).\n` +
-            `👉 Có thể kèm thời lượng mong muốn: <code>&lt;link&gt; 45s</code> hoặc <code>&lt;link&gt; 30s</code>.\n\n` +
-            `2️⃣ <b>Yêu cầu làm lại video:</b>\n` +
-            `👉 <code>làm lại 45s</code> hoặc <code>làm lại 30s</code>: Sẽ tự động làm lại bài báo gần nhất với độ dài bạn muốn!\n` +
-            `👉 <code>đổi ảnh</code>: Tự động đổi góc ảnh và phối hợp ảnh mới cho bài báo gần nhất.\n\n` +
-            `3️⃣ <b>Xử lý khi bị treo:</b>\n` +
-            `👉 Gõ <code>reset</code> hoặc <code>hủy</code>: Lập tức gỡ treo và giải phóng máy để nhận lệnh mới.\n\n` +
-            `4️⃣ <b>Săn tin hot & Xu hướng:</b>\n` +
-            `👉 Nhắn: <code>có tin gì mới ko</code>, <code>tin mới</code>, <code>tin hot</code>, <code>/trend</code> hoặc <code>/tin</code>\n` +
-            `👉 Gõ <code>/status</code> để xem tình trạng hoạt động.`;
+            `👉 Hoặc dán cả đoạn tin tức văn bản để làm video.\n\n` +
+            `2️⃣ <b>Phản hồi / Báo lỗi / Yêu cầu sửa video:</b>\n` +
+            `👉 Bạn chỉ cần <b>nhắn tin tự nhiên như nói chuyện</b>:\n` +
+            `   - <i>"Sửa lại video vừa rồi thiếu mốc 1/7/2027"</i>\n` +
+            `   - <i>"Bỏ từ khẩn cấp đi, đừng nói rét đậm"</i>\n` +
+            `   - <i>"Làm lại 30s thôi"</i> hoặc <i>"Đổi ảnh khác"</i>\n` +
+            `⚡ Bot sẽ lập tức phân tích và <b>kết xuất lại video mới đã sửa</b> cho bạn ngay!\n\n` +
+            `3️⃣ <b>Dặn dò quy tắc lâu dài:</b>\n` +
+            `👉 <i>"Từ nay về sau tin chính sách nhớ thêm mốc thời gian"</i> (Gõ <code>/rules</code> để xem các quy tắc đang lưu).\n\n` +
+            `4️⃣ <b>Săn tin hot & Kiểm tra trạng thái:</b>\n` +
+            `👉 Nhắn: <code>có tin gì mới ko</code>, <code>tin mới</code>, <code>/trend</code>\n` +
+            `👉 Gõ <code>/status</code> để xem bài gần nhất và các quy tắc.`;
           await sendMessage(helpText, msgId);
           continue;
         }
 
-        // 3. Quét tin hot / Hỏi tin tức mới ("có tin gì mới ko", "tin mới", "trend",...)
-        const isTrendQuery =
-          text === '/trend' ||
-          text === '/tin' ||
-          lower === 'trend' ||
-          lower === 'trends' ||
-          lower === 'xu hướng' ||
-          lower.includes('tin mới') ||
-          lower.includes('tin tức mới') ||
-          lower.includes('có gì mới') ||
-          lower.includes('có tin gì mới') ||
-          lower.includes('có tin mới') ||
-          lower.includes('tin hot') ||
-          lower.includes('tin nóng') ||
-          lower.includes('có biến gì') ||
-          lower.includes('săn tin') ||
-          lower.includes('trend gì') ||
-          lower.includes('xu hướng gì');
+        // 3. Kiểm tra trạng thái hệ thống & bài gần nhất
+        if (text === '/status') {
+          const uptimeMinutes = Math.round(process.uptime() / 60);
+          const memory = loadBotMemory();
+          const directives = memory.customDirectives || [];
+          let statusMsg = `🟢 <b>Hệ thống đang hoạt động tốt!</b>\n⏱ Thời gian chạy: ${uptimeMinutes} phút\n🎬 Kênh: HÓNG HỚT 24/7\n📰 <b>Bài gần nhất:</b> <code>${memory.lastJob ? memory.lastJob.articleTitle : 'Chưa có'}</code>\n🔗 <b>Nguồn:</b> <code>${memory.lastJob ? memory.lastJob.urlOrText : 'Chưa có'}</code>`;
+          if (directives.length > 0) {
+            statusMsg += `\n\n📌 <b>Quy tắc chủ kênh đang áp dụng (${directives.length}):</b>\n${directives.map((d, i) => `${i + 1}. ${d}`).join('\n')}`;
+          }
+          await sendMessage(statusMsg, msgId);
+          continue;
+        }
 
-        if (isTrendQuery && !text.includes('http')) {
-          await sendMessage('🔍 <i>Đang quét và tổng hợp các tin hot, xu hướng mới nhất từ mạng xã hội và Google Trends cho bạn...</i>', msgId);
+        // 4. Quản lý quy tắc (/rules, xem quy tắc, xóa quy tắc)
+        if (text === '/rules' || lower === 'quy tắc' || lower === 'xem quy tắc') {
+          const memory = loadBotMemory();
+          const directives = memory.customDirectives || [];
+          if (directives.length === 0) {
+            await sendMessage('💡 <i>Chưa có quy tắc tùy chỉnh nào được lưu. Bạn có thể dặn dò bằng cách nhắn: "Từ nay về sau..." nhé!</i>', msgId);
+          } else {
+            const list = directives.map((d, i) => `<b>${i + 1}.</b> ${d}`).join('\n\n');
+            await sendMessage(`📌 <b>DANH SÁCH QUY TẮC ĐANG ÁP DỤNG (${directives.length}):</b>\n\n${list}\n\n👉 Để xóa quy tắc, hãy gõ: <code>xóa quy tắc [số]</code> (Ví dụ: <code>xóa quy tắc 1</code>) hoặc <code>xóa hết quy tắc</code>.`, msgId);
+          }
+          continue;
+        }
+
+        const delMatch = text.match(/^(?:xóa quy tắc|xoa quy tac)\s*(\d+)$/i);
+        if (delMatch) {
+          const idx = parseInt(delMatch[1], 10);
+          const removed = removeCustomDirective(idx);
+          if (removed) {
+            await sendMessage(`✅ <b>Đã xóa quy tắc ${idx}:</b> <i>"${removed}"</i>`, msgId);
+          } else {
+            await sendMessage(`⚠️ Không tìm thấy quy tắc số ${idx}. Gõ <code>/rules</code> để xem danh sách.`, msgId);
+          }
+          continue;
+        }
+
+        if (lower === 'xóa hết quy tắc' || lower === 'xoa het quy tac') {
+          clearCustomDirectives();
+          await sendMessage('✅ <b>Đã xóa toàn bộ quy tắc tùy chỉnh!</b>', msgId);
+          continue;
+        }
+
+        // 5. Nếu tin nhắn là URL bài báo thuần túy (hoặc URL kèm số giây như: <link> 45s)
+        const urlMatch = text.match(/https?:\/\/[^\s]+/);
+        const isUrlOnly =
+          urlMatch &&
+          text.replace(urlMatch[0], '').replace(/\d{2}\s*(?:s|giây|sec)/i, '').trim().length === 0;
+
+        if (isUrlOnly) {
+          const targetUrl = urlMatch[0];
+          let targetSec = 38;
+          const inlineSecMatch = text.match(/(\d{2})\s*(?:s|giây|sec)/i);
+          if (inlineSecMatch) targetSec = parseInt(inlineSecMatch[1], 10);
+          lastArticleUrl = targetUrl;
+          executeVideoPipeline(targetUrl, msgId, { targetDuration: targetSec });
+          continue;
+        }
+
+        // 6. TOÀN BỘ CÁC TIN NHẮN TỰ NHIÊN (Báo lỗi, Góp ý, Sửa kịch bản, Dặn dò, Hỏi đáp, Tin văn bản...)
+        // SẼ ĐƯỢC AI NLU PHÂN TÍCH NGỮ NGHĨA VÀ TỰ ĐỘNG THỰC THI HÀNH ĐỘNG
+        await sendChatAction('typing');
+        const memory = loadBotMemory();
+        const analysis = await analyzeUserMessage(text, ai);
+        console.log(`[AI Analysis] Intent: ${analysis.intent} | Target: ${analysis.targetDuration}s | Reply: ${analysis.replyText?.slice(0, 60)}...`);
+
+        // Case A: Phản hồi / Báo lỗi / Yêu cầu sửa kịch bản & kết xuất lại video gần nhất
+        if (analysis.intent === 'REMAKE_WITH_FEEDBACK') {
+          const targetJob = memory.lastJob;
+          if (!targetJob || !targetJob.urlOrText) {
+            await sendMessage(
+              `💡 <i>Tôi hiểu góp ý của bạn: "<b>${analysis.feedback || text}</b>", nhưng hiện chưa tìm thấy video gần nhất trong bộ nhớ để sửa. Bạn hãy gửi link bài báo kèm yêu cầu này nhé!</i>`,
+              msgId
+            );
+            continue;
+          }
+
+          await sendMessage(
+            analysis.replyText ||
+              `🔄 <b>Đã tiếp nhận góp ý:</b> <i>"${analysis.feedback || text}"</i>\n⚡ <b>Đang sửa lại kịch bản và kết xuất video mới ngay lập tức cho bạn...</b>`,
+            msgId
+          );
+
+          const targetSec = analysis.targetDuration || targetJob.targetDuration || 38;
+          executeVideoPipeline(targetJob.urlOrText, msgId, {
+            targetDuration: targetSec,
+            refreshImages: analysis.refreshImages || false,
+            userFeedback: analysis.feedback || text,
+          });
+          continue;
+        }
+
+        // Case B: Dặn dò quy tắc lâu dài
+        if (analysis.intent === 'SAVE_DIRECTIVE') {
+          if (analysis.directive) {
+            addCustomDirective(analysis.directive);
+          }
+          await sendMessage(
+            analysis.replyText ||
+              `📌 <i>Đã lưu quy tắc mới vào bộ nhớ hệ thống! Mọi video từ nay về sau sẽ tuân thủ quy tắc này.</i>`,
+            msgId
+          );
+          continue;
+        }
+
+        // Case C: Quét tin hot / Trends
+        if (analysis.intent === 'TREND_QUERY') {
+          await sendMessage(
+            analysis.replyText || '🔍 <i>Đang quét và tổng hợp các tin hot, xu hướng mới nhất từ mạng xã hội cho bạn...</i>',
+            msgId
+          );
           await runScan(true);
           continue;
         }
 
-        // 4. Kiểm tra trạng thái
-        if (text === '/status') {
-          const uptimeMinutes = Math.round(process.uptime() / 60);
-          await sendMessage(`🟢 <b>Hệ thống đang hoạt động tốt!</b>\n⏱ Thời gian chạy: ${uptimeMinutes} phút\n🎬 Kênh: HÓNG HỚT 24/7\n📰 Bài gần nhất: <code>${lastArticleUrl || 'Chưa có'}</code>`, msgId);
+        // Case D: Tạo video từ đoạn văn bản tin tức
+        if (analysis.intent === 'MAKE_VIDEO_TEXT') {
+          if (analysis.replyText) await sendMessage(analysis.replyText, msgId);
+          const targetContent = analysis.content || text;
+          const targetSec = analysis.targetDuration || 38;
+          lastArticleUrl = targetContent;
+          executeVideoPipeline(targetContent, msgId, { targetDuration: targetSec });
           continue;
         }
 
-        // 5. Làm lại theo thời lượng (ví dụ: "làm lại 45s", "làm 30 giây", "rút ngắn 30s", "45s")
-        const durationOnlyMatch = text.match(/^(?:làm lại|sửa lại|chỉnh|rút ngắn|kéo dài)?\s*(\d{2})\s*(?:s|giây|sec)$/i);
-        if (durationOnlyMatch && !text.includes('http')) {
-          if (!lastArticleUrl) {
-            await sendMessage('💡 <i>Chưa có bài báo gần nhất trong bộ nhớ. Bạn hãy gửi link bài báo kèm thời lượng nhé (Ví dụ: &lt;link&gt; 45s)!</i>', msgId);
-            continue;
-          }
-          const sec = parseInt(durationOnlyMatch[1], 10);
-          await sendMessage(`🔄 <b>Đang làm lại video từ bài báo gần nhất với thời lượng ~${sec} giây...</b>`, msgId);
-          executeVideoPipeline(lastArticleUrl, msgId, { targetDuration: sec });
+        // Case E: Trò chuyện / Thắc mắc / Câu hỏi chung
+        if (analysis.intent === 'CHAT_OR_QUESTION') {
+          await sendMessage(
+            analysis.replyText ||
+              '👋 <i>Tôi đã lắng nghe ý kiến của bạn! Nếu bạn muốn làm video mới hoặc sửa video vừa rồi, hãy nhắn chi tiết cho tôi nhé.</i>',
+            msgId
+          );
           continue;
-        }
-
-        // 6. Đổi ảnh ("đổi ảnh", "thay ảnh", "sửa ảnh")
-        if ((lower.includes('đổi ảnh') || lower.includes('thay ảnh') || lower.includes('sửa ảnh')) && !text.includes('http')) {
-          if (!lastArticleUrl) {
-            await sendMessage('💡 <i>Chưa có bài báo gần nhất trong bộ nhớ. Bạn hãy gửi link bài báo nhé!</i>', msgId);
-            continue;
-          }
-          await sendMessage('🔄 <b>Đang làm lại video bài báo gần nhất với góc crop và phối hợp ảnh mới...</b>', msgId);
-          executeVideoPipeline(lastArticleUrl, msgId, { refreshImages: true });
-          continue;
-        }
-
-        // 7. Nhận diện link bài báo hoặc lệnh làm video từ nội dung tóm tắt
-        const urlMatch = text.match(/https?:\/\/[^\s]+/);
-        let targetSec = 38;
-        const inlineSecMatch = text.match(/(\d{2})\s*(?:s|giây|sec)/i);
-        if (inlineSecMatch) {
-          targetSec = parseInt(inlineSecMatch[1], 10);
-        }
-
-        const isExplicitMakeVideo =
-          lower.startsWith('làm video:') ||
-          lower.startsWith('tạo video:') ||
-          lower.startsWith('video:') ||
-          lower.startsWith('gen:') ||
-          lower.startsWith('làm video ') ||
-          lower.startsWith('tạo video ') ||
-          text.includes('(Theo ');
-
-        if (urlMatch) {
-          const targetUrl = urlMatch[0];
-          lastArticleUrl = targetUrl;
-          executeVideoPipeline(targetUrl, msgId, { targetDuration: targetSec });
-        } else if (isExplicitMakeVideo && text.length >= 25) {
-          // Người dùng chủ động yêu cầu làm video từ đoạn tóm tắt
-          const cleanContent = text
-            .replace(/^(?:làm video:|tạo video:|video:|gen:|làm video|tạo video)\s*/i, '')
-            .trim();
-          lastArticleUrl = cleanContent;
-          executeVideoPipeline(cleanContent, msgId, { targetDuration: targetSec });
-        } else {
-          await sendMessage('💡 <i>Để tạo video, bạn hãy gửi <b>link bài báo</b> (hoặc gõ: <code>làm video: &lt;nội dung&gt;</code>) nhé! Để xem tin nóng mới nhất, hãy nhắn <code>có tin gì mới ko</code>.</i>', msgId);
         }
       }
     }
