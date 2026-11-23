@@ -36,6 +36,13 @@ import {
   analyzeUserMessage,
 } from './tele-bot-brain.mjs';
 import { verifyAndFactCheckScript } from './fact-checker.mjs';
+import {
+  formatScriptForTelegram,
+  createApprovalSession,
+  getActiveApproval,
+  clearActiveApproval,
+  parseApprovalInput,
+} from './script-approval.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -559,14 +566,15 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
   const targetDuration = options.targetDuration || 38;
   const startTime = Date.now();
 
-  // Watchdog timer: tự động hủy sau 4 phút để chống treo vĩnh viễn
+  // Watchdog timer: tự động hủy sau 15 phút (bao gồm 5 phút chờ duyệt + render) để chống treo vĩnh viễn
   const watchdog = setTimeout(async () => {
     if (isProcessingJob) {
-      console.warn('⚠️ [Watchdog] Quá 4 phút! Tự động gỡ treo hệ thống.');
+      console.warn('⚠️ [Watchdog] Quá 15 phút! Tự động gỡ treo hệ thống.');
+      clearActiveApproval();
       isProcessingJob = false;
-      await sendMessage('⚠️ <b>Tiến trình xử lý quá 4 phút</b> nên đã tự động ngắt để bảo vệ hệ thống. Bạn có thể gửi lại lệnh ngay bây giờ nhé!', replyMessageId);
+      await sendMessage('⚠️ <b>Tiến trình xử lý quá thời gian tối đa</b> nên đã tự động ngắt để bảo vệ hệ thống. Bạn có thể gửi lại lệnh ngay bây giờ nhé!', replyMessageId);
     }
-  }, 240000);
+  }, 900000);
 
   try {
     const isUrl = urlOrText.startsWith('http');
@@ -657,6 +665,41 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
       aiInstance: ai,
     });
     scriptData = factCheckResult.scriptData;
+
+    // 2.8 Bước Gửi Kịch Bản Chờ Chủ Kênh Duyệt (5 Phút)
+    // Nếu chạy qua Telegram bot và không có cờ skipApproval:
+    const shouldWaitApproval = !options.skipApproval && !process.env.CI;
+    if (shouldWaitApproval) {
+      const preview = formatScriptForTelegram(articleData, scriptData, false);
+      await sendMessage(preview, replyMessageId);
+
+      const approvalResult = await new Promise((resolve) => {
+        createApprovalSession({
+          slug,
+          scriptData,
+          articleData,
+          replyMessageId,
+          timeoutMs: 300000, // 5 phút chờ duyệt
+          onTimeout: async () => {
+            await sendMessage(
+              `⏱ <b>Đã hết 5 phút chờ duyệt!</b> Hệ thống tự động duyệt kịch bản và tiến hành thu âm TTS & kết xuất video ngay bây giờ...`,
+              replyMessageId
+            );
+          },
+          onResolve: resolve,
+        });
+      });
+
+      if (approvalResult.status === 'CANCELLED') {
+        console.log(`[Approval] Lượt tạo video ${slug} đã bị hủy bởi chủ kênh.`);
+        await sendMessage('🛑 <b>Đã hủy tiến trình tạo video thành công.</b>', replyMessageId);
+        return;
+      }
+
+      if (approvalResult.scriptData) {
+        scriptData = approvalResult.scriptData;
+      }
+    }
     const scriptDir = path.join(ROOT, `videos/${slug}/script`);
     fs.mkdirSync(scriptDir, { recursive: true });
 
@@ -961,6 +1004,52 @@ async function pollTelegramUpdates() {
         const msgId = msg.message_id;
         const lower = text.toLowerCase();
         console.log(`[Telegram] Nhận lệnh từ Chat ID: "${text}"`);
+
+        // 0. Xử lý khi đang trong phiên chờ duyệt kịch bản (Script Approval Gateway - 5 Phút)
+        const currentApproval = getActiveApproval();
+        if (currentApproval) {
+          const parsed = parseApprovalInput(text);
+
+          if (parsed.action === 'APPROVE') {
+            await sendMessage('✅ <b>Đã nhận lệnh duyệt của bạn!</b> Đang bắt đầu thu âm giọng đọc và render video ngay...', msgId);
+            clearActiveApproval();
+            currentApproval.resolve({ status: 'MANUALLY_APPROVED', scriptData: currentApproval.scriptData });
+            continue;
+          }
+
+          if (parsed.action === 'CANCEL') {
+            await sendMessage('🛑 <b>Đã hủy lượt tạo video theo yêu cầu của bạn.</b>', msgId);
+            clearActiveApproval();
+            currentApproval.resolve({ status: 'CANCELLED', scriptData: null });
+            continue;
+          }
+
+          if (parsed.action === 'EDIT_REQUEST') {
+            await sendMessage(`✍️ <i>Đã nhận yêu cầu sửa kịch bản: "${parsed.feedback}". Đang biên tập lại kịch bản theo ý bạn...</i>`, msgId);
+            await sendChatAction('typing');
+
+            let updatedScript = await generateVideoScript(
+              currentApproval.articleData,
+              currentApproval.targetDuration || 38,
+              parsed.feedback
+            );
+
+            // Fact-check lại kịch bản mới
+            const check = await verifyAndFactCheckScript({
+              articleData: currentApproval.articleData,
+              scriptData: updatedScript,
+              aiInstance: ai,
+            });
+            const finalScript = check.scriptData;
+
+            currentApproval.scriptData = finalScript;
+
+            // Gửi lại kịch bản mới cho chủ kênh xem
+            const newPreview = formatScriptForTelegram(currentApproval.articleData, finalScript, true);
+            await sendMessage(newPreview, msgId);
+            continue;
+          }
+        }
 
         // 1. Lệnh khẩn cấp gỡ treo hệ thống
         if (lower === 'reset' || lower === 'hủy' || lower === 'huy' || lower === 'gỡ treo' || lower === 'go treo' || lower === '/cancel') {
