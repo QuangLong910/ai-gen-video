@@ -102,6 +102,11 @@ When the user types `/gen-video [--template <template-id>] [--audio=<mode>] <con
 → Policy & Effective Date Rule: Với các tin thời sự về chính sách, luật pháp, thuế, phí hoặc quy định mới:
   * BẮT BUỘC nêu rõ mốc thời gian có hiệu lực / lộ trình thực thi (ví dụ: "áp dụng từ 1/7/2027", "có hiệu lực từ đầu năm tới") nếu bài báo có nêu, tuyệt đối không diễn đạt chung chung khiến khán giả hiểu nhầm là áp dụng ngay lập tức.
   * Phải đưa con số định lượng cụ thể (mức thuế, đối tượng áp dụng, điều kiện miễn trừ) thay vì các câu chữ khái quát, sáo rỗng.
+→ Official News Fact-Checking & Truth Verification Rule:
+  * BẮT BUỘC thực hiện bước kiểm chứng thông tin (Fact-Checking & Truth Verification) đối chiếu trực tiếp với bài báo gốc và các cơ quan báo chí chính thống (VnExpress, Dân Trí, Tuổi Trẻ, CAND, VietnamNet, TTXVN, Báo Nhân Dân, Chinhphu.vn) trước khi tiến hành thu âm TTS và render video.
+  * Tuyệt đối KHÔNG đưa tin sai sự thật, không phát tán tin đồn chưa kiểm chứng, không bịa đặt, không xuyên tạc.
+  * Tự động hiệu đính kịch bản (Auto-Correction): Nếu phát hiện kịch bản nói quá (như thời tiết "trời rét" bị nâng thành "rét đậm cực mạnh") hoặc thiếu sót mốc thời gian (như mốc 1/7/2027), hệ thống tự động sửa lại kịch bản chuẩn 100% sự thật.
+  * Nếu phát hiện nội dung có dấu hiệu tin giả, tin bịa đặt: Lập tức dừng pipeline và cảnh báo ngay cho người dùng trên Telegram, từ chối tạo video sai sự thật.
 → 3-second hook rule: Trong 3 giây đầu tiên (Hook mở đầu), BẮT BUỘC mở đầu bằng cụm từ cuốn hút, tự nhiên như 'Tin nóng!', 'Tin nóng nhất hôm nay!', 'Tin cực nóng!', 'Biến động mới nhất!'... TUYỆT ĐỐI KHÔNG lạm dụng từ 'khẩn cấp' (chỉ tin nóng là đủ lôi cuốn, không làm người xem thấy báo động giả hay mệt mỏi), tối ưu retention giữ chân người xem cao nhất.
 → Mobile-First High-Retention Layout rule:
   * TÁCH TIÊU ĐỀ RA KHỎI BANNER: Tuyệt đối không nhét cả tiêu đề dài vào banner dưới làm chữ bị nhỏ li ti không đọc nổi trên điện thoại.

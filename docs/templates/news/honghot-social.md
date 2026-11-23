@@ -16,6 +16,10 @@ Phong cách video tin tức mạng xã hội ngắn (9:16) hiện đại, tối 
 - **Quy tắc tin Chính Sách, Pháp Luật, Thuế, Phí (Policy & Effective Date Rule)**:
   * BẮT BUỘC nêu rõ mốc thời gian có hiệu lực / lộ trình thực thi (ví dụ: *"áp dụng từ 1/7/2027"*, *"có hiệu lực từ đầu năm tới"*) nếu bài báo có đề cập. Tuyệt đối không diễn đạt chung chung khiến khán giả hiểu nhầm là áp dụng ngay lập tức.
   * Phải đưa con số định lượng cụ thể (mức thuế, đối tượng áp dụng, điều kiện miễn trừ) thay vì các câu chữ khái quát, sáo rỗng.
+- **Quy tắc Kiểm chứng Báo chí Chính thống (Official News Fact-Checking & Truth Verification)**:
+  * BẮT BUỘC thực hiện bước kiểm chứng thông tin đối chiếu với bài báo gốc và các báo lớn (VnExpress, Dân Trí, Tuổi Trẻ, CAND, VietnamNet, TTXVN, Báo Nhân Dân, Chinhphu.vn) trước khi thu âm TTS và render video.
+  * Tuyệt đối KHÔNG đưa tin sai sự thật, không thổi phồng, không ảo giác, không bịa đặt.
+  * Tự động hiệu đính kịch bản (Auto-Correction) nếu phát hiện thiếu sót chi tiết hoặc nói quá trước khi render. Phát hiện tin giả độc hại phải lập tức dừng pipeline.
 - **Bố cục 3 Tầng tách biệt (Tối ưu màn hình điện thoại)**:
   1. **Tầng 1 (1/3 trên cùng - Hook Headline đè lên ảnh)**:
      - Tiêu đề ngắn gọn, đắt giá, giật gân, **đè trực tiếp lên ảnh**.
