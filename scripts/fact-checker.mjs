@@ -159,6 +159,46 @@ export function heuristicFactCheck(articleData, scriptData) {
         }
       }
     }
+
+    // 4. Kiểm tra danh xưng cho tên người (không gọi tên trống không / cộc lốc)
+    const HONORIFIC_PREFIXES =
+      '(?:đối tượng|bị can|bị cáo|ông|bà|anh|chị|em|cháu|cụ|thủ tướng|bộ trưởng|luật sư|bác sĩ|chuyên gia|nghi can|nghi phạm)';
+    const bareCrimeRegex = new RegExp(
+      '(bắt giữ|tạm giam|khởi tố|truy nã|truy bắt|áp giải)\\s+(?!' +
+        HONORIFIC_PREFIXES +
+        '\\b)([A-ZÀ-Ỹ][a-zà-ỹ]*(?:\\s+[A-ZÀ-Ỹ][a-zà-ỹ]*)*)',
+      'g'
+    );
+    if (bareCrimeRegex.test(scene.text)) {
+      issues.push(`Cảnh ${scene.id}: Gọi tên đối tượng vi phạm trống không, thiếu danh xưng chuẩn mực.`);
+      scene.text = scene.text.replace(bareCrimeRegex, '$1 đối tượng $2');
+      corrections.push(`Cảnh ${scene.id}: Tự động bổ sung danh xưng "đối tượng" trước tên riêng.`);
+    }
+
+    const startBareRegex = new RegExp(
+      '(^|[.!?]\\s+)(?!' +
+        HONORIFIC_PREFIXES +
+        '\\b)([A-ZÀ-Ỹ][a-zà-ỹ]*(?:\\s+[A-ZÀ-Ỹ][a-zà-ỹ]*)*)\\s+(khai nhận|thừa nhận|bỏ trốn|gây án)',
+      'g'
+    );
+    if (startBareRegex.test(scene.text)) {
+      issues.push(`Cảnh ${scene.id}: Gọi tên riêng cộc lốc ở đầu câu.`);
+      scene.text = scene.text.replace(startBareRegex, '$1Đối tượng $2 $3');
+      corrections.push(`Cảnh ${scene.id}: Tự động bổ sung danh xưng "Đối tượng" ở đầu câu.`);
+    }
+
+    // 5. Kiểm tra kết bài có đầu có cuối (Cảnh 4 không được cụt lủn chỉ có mỗi câu kêu gọi follow)
+    if (scene.id === 4) {
+      const textWithoutCta = scene.text
+        .replace(/hãy bấm theo dõi.*$/i, '')
+        .replace(/theo dõi hóng hớt.*$/i, '')
+        .trim();
+      if (textWithoutCta.length < 15) {
+        issues.push('Cảnh 4 kết thúc quá đột ngột, thiếu câu đúc kết sự việc trước khi kêu gọi theo dõi.');
+        scene.text = `Hiện vụ việc đang được cơ quan chức năng tiếp tục điều tra làm rõ và xử lý nghiêm minh theo quy định pháp luật. ${scene.text}`;
+        corrections.push('Cảnh 4: Bổ sung câu đúc kết kết bài trọn vẹn trước câu kêu gọi follow.');
+      }
+    }
   }
 
   return {

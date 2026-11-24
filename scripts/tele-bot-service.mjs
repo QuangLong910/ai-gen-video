@@ -419,7 +419,19 @@ ${lengthReq}
    - title: Tiêu đề in hoa, ngắn gọn, phản ánh đúng thực tế, tối đa 5-7 từ.
    - subtitle: 1 câu tóm tắt nội dung cảnh đó (khoảng 10-14 từ).
    - categoryTag: 1 tag cảm xúc có icon (ví dụ: "🚨 TIN CỰC NÓNG", "⛈️ DỰ BÁO THỜI TIẾT", "⚖️ PHÁP LUẬT").
-5. CAPTION & 5 HASHTAG: Tạo caption đăng mạng xã hội và CHỈ DÙNG TỐI ĐA 5 HASHTAG (chọn 5 hashtag đắt giá, cô đọng nhất).
+5. DANH XƯNG CHUẨN MỰC CHO TÊN NGƯỜI (VIETNAMESE HONORIFICS & PERSON ADDRESSING):
+   - TUYỆT ĐỐI KHÔNG gọi tên người cộc lốc, trống không (không bao giờ viết "Lan nói", "Tuấn khai", "Hằng bị bắt", "Vân chỉ đạo").
+   - BẮT BUỘC luôn gắn danh xưng chuẩn mực theo đúng vị thế xã hội, tư cách pháp lý và văn hóa tiếng Việt:
+     * Cán bộ, lãnh đạo, chuyên gia: "ông [Tên]", "bà [Tên]", "Thủ tướng [Tên]", "Bộ trưởng [Tên]", "Luật sư [Tên]", "Bác sĩ [Tên]", "Chuyên gia [Tên]"...
+     * Người dân, nhân chứng, nạn nhân: "ông", "bà", "anh", "chị", "em", "cháu", "người dân", "nạn nhân"...
+     * Đối tượng phạm tội, bị can, bị cáo: "đối tượng [Tên]", "bị can [Tên]", "bị cáo [Tên]" (ví dụ: "đối tượng Tuấn", "bị can Nguyễn Văn A", "bị cáo Trương Mỹ Lan").
+   - Giọng điệu văn phong phải đĩnh đạc, lịch thiệp, giữ chuẩn mực truyền hình thời sự, tôn trọng người xem.
+6. MẠCH TRUYỆN CÓ ĐẦU CÓ CUỐI, CHUYỂN Ý TỰ NHIÊN (WELL-STRUCTURED NARRATIVE ARC):
+   - Kịch bản 4 cảnh phải tạo thành một câu chuyện liền mạch, có mở đầu, diễn biến, cao trào và kết thúc trọn vẹn:
+     * CẢNH 1 (MỞ ĐẦU / ĐẦU CÂU CHUYỆN): Hook mở đầu giật gân, nêu rõ ngay bối cảnh sự việc, địa điểm, ai là nhân vật chính. Khán giả nắm bắt ngay lập tức bối cảnh câu chuyện.
+     * CẢNH 2 & 3 (DIỄN BIẾN & CAO TRÀO): Dùng từ nối chuyển tiếp tự nhiên ("Theo đó...", "Đáng chú ý...", "Cụ thể...", "Tại cơ quan công an...", "Trước tình hình này..."), liên kết chặt chẽ các diễn biến, lời khai, chứng cứ và số liệu.
+     * CẢNH 4 (KẾT BÀI / CÓ CUỐI TRỌN VẸN): BẮT BUỘC có phần đúc kết sự việc (kết quả xử lý, bài học cảnh giác cho người dân, lời khuyên chuyên gia hoặc hậu quả pháp lý) ĐẢM BẢO CÂU CHUYỆN KẾT THÚC CÓ HẬU / RÕ RÀNG trước khi đưa ra câu kêu gọi theo dõi kênh: "Hãy bấm theo dõi Hóng Hớt hai tư trên bảy để cập nhật tin mới nhất nhé!". Tuyệt đối không kết thúc cụt lủn, lửng lơ.
+7. CAPTION & 5 HASHTAG: Tạo caption đăng mạng xã hội và CHỈ DÙNG TỐI ĐA 5 HASHTAG (chọn 5 hashtag đắt giá, cô đọng nhất).
 ${feedbackSection}
 ${directivesSection}
 ${mediaCatalogSection}

@@ -122,6 +122,18 @@ When the user types `/gen-video [--template <template-id>] [--audio=<mode>] <con
     - Nếu cảnh nói về hiện trường, điều tra, bắt bớ, tòa án, cứu hộ -> BẮT BUỘC hiển thị đúng ảnh hiện trường, công an, bị cáo, bệnh viện tương ứng.
   * Tuyệt đối KHÔNG ĐỂ XẢY RA: Ảnh hiển thị 1 kiểu, nội dung nói 1 kiểu khác, và tiêu đề lại 1 kiểu khác. Cả 3 yếu tố phải tạo thành một khối thống nhất hoàn chỉnh.
   * Phân bổ tư liệu: Sử dụng `syncMediaToScenes` để ghép nối tư liệu thông minh vào 4 cảnh dựa trên chú thích ảnh và từ khóa ngữ nghĩa, đảm bảo mỗi cảnh có ít nhất 1 tư liệu và 100% tư liệu đã thu thập đều được sử dụng.
+→ Vietnamese Honorifics & Person Addressing Rule (Quy tắc danh xưng chuẩn mực cho nhân vật):
+  * TUYỆT ĐỐI KHÔNG gọi tên người cộc lốc, trống không trong kịch bản (không nói "Lan nói", "Tuấn khai", "Hằng bị bắt", "Vân chỉ đạo").
+  * BẮT BUỘC luôn gắn danh xưng chuẩn mực theo đúng vị thế xã hội, tư cách pháp lý và văn hóa tiếng Việt:
+    - Lãnh đạo, cán bộ, chuyên gia: "ông [Tên]", "bà [Tên]", "Thủ tướng [Tên]", "Bộ trưởng [Tên]", "Luật sư [Tên]", "Bác sĩ [Tên]"...
+    - Người dân, nhân chứng, nạn nhân: "ông", "bà", "anh", "chị", "em", "cháu", "người dân", "nạn nhân"...
+    - Đối tượng phạm tội, bị can, bị cáo: "đối tượng [Tên]", "bị can [Tên]", "bị cáo [Tên]" (ví dụ: "đối tượng Tuấn", "bị can Nguyễn Văn A", "bị cáo Trương Mỹ Lan").
+  * Giọng điệu văn phong phải đĩnh đạc, lịch thiệp, giữ chuẩn mực truyền hình thời sự, tôn trọng người xem.
+→ Well-Structured Narrative Arc Rule (Quy tắc mạch truyện có đầu có cuối):
+  * Kịch bản 4 cảnh phải tạo thành một câu chuyện liền mạch, có mở đầu, diễn biến, cao trào và kết thúc trọn vẹn:
+    - CẢNH 1 (MỞ ĐẦU / ĐẦU CÂU CHUYỆN): Hook mở đầu giật gân, nêu rõ ngay bối cảnh sự việc, địa điểm, ai là nhân vật chính. Khán giả nắm bắt ngay lập tức bối cảnh câu chuyện.
+    - CẢNH 2 & 3 (DIỄN BIẾN & CAO TRÀO): Dùng từ nối chuyển tiếp tự nhiên ("Theo đó...", "Đáng chú ý...", "Cụ thể...", "Tại cơ quan công an...", "Trước tình hình này..."), liên kết chặt chẽ các diễn biến, lời khai, chứng cứ và số liệu.
+    - CẢNH 4 (KẾT BÀI / CÓ CUỐI TRỌN VẸN): BẮT BUỘC có phần đúc kết sự việc (kết quả xử lý, bài học cảnh giác cho người dân, lời khuyên chuyên gia hoặc hậu quả pháp lý) ĐẢM BẢO CÂU CHUYỆN KẾT THÚC CÓ HẬU / RÕ RÀNG trước khi đưa ra câu kêu gọi theo dõi kênh: "Hãy bấm theo dõi Hóng Hớt hai tư trên bảy để cập nhật tin mới nhất nhé!". Tuyệt đối không kết thúc cụt lủn, lửng lơ.
 → Evergreen & Emotional/Humorous Filler rule: Khi thời điểm đói tin nóng hoặc người dùng yêu cầu tìm tin, luôn chủ động chuẩn bị và đề xuất thêm các chủ đề cảm động (nghĩa cử ấm lòng, tình người trong mưa lũ/khó khăn, tấm gương nghị lực) hoặc hài hước (tình huống đời thường dở khóc dở cười, chuyện đám cưới/thú cưng/văn phòng viral) để kênh luôn có nội dung giữ chân khán giả và duy trì lịch đăng đều đặn mỗi ngày.
 → Read `docs/SKILL-GEN-VIDEO.md` and execute the 8-step pipeline:
   Setup → Planner → Teller → Audio → Transcribe → Spec → Coder → Render

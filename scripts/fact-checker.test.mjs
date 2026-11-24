@@ -102,6 +102,35 @@ test('heuristicFactCheck tự động bổ sung mốc thời gian 1/7/2027 cho t
   assert.ok(res.scriptData.scenes[2].text.includes('1/7/2027') || res.scriptData.scenes[2].text.includes('1 tháng 7 năm 2027'));
 });
 
+test('heuristicFactCheck tự động bổ sung danh xưng cho tên người và hoàn thiện kết bài có đầu có cuối', () => {
+  const articleData = {
+    title: 'Bắt giữ đối tượng lừa đảo chiếm đoạt tài sản',
+    domain: 'cand.com.vn',
+    content: 'Cơ quan Cảnh sát điều tra Công an TP Hà Nội vừa bắt giữ đối tượng Nguyễn Văn Tuấn...',
+  };
+
+  const scriptData = {
+    scenes: [
+      { id: 1, text: 'Tin nóng! Công an quận vừa bắt giữ Tuấn vì hành vi lừa đảo qua mạng.' },
+      { id: 2, text: 'Tuấn khai nhận đã tạo hàng loạt tài khoản ảo chiếm đoạt tiền của nhiều nạn nhân.' },
+      { id: 3, text: 'Tang vật thu giữ gồm nhiều điện thoại và tài khoản ngân hàng.' },
+      { id: 4, text: 'Hãy bấm theo dõi Hóng Hớt hai tư trên bảy để cập nhật tin mới nhất nhé!' },
+    ],
+  };
+
+  const res = heuristicFactCheck(articleData, scriptData);
+  assert.equal(res.passed, false);
+
+  // Cảnh 1: Đã thêm "đối tượng" trước Tuấn
+  assert.ok(res.scriptData.scenes[0].text.includes('bắt giữ đối tượng Tuấn'));
+
+  // Cảnh 2: Đã thêm "Đối tượng" ở đầu câu
+  assert.ok(res.scriptData.scenes[1].text.includes('Đối tượng Tuấn khai nhận'));
+
+  // Cảnh 4: Đã có câu đúc kết sự việc trước khi kêu gọi follow
+  assert.ok(res.scriptData.scenes[3].text.includes('cơ quan chức năng tiếp tục điều tra làm rõ'));
+});
+
 test('verifyAndFactCheckScript từ chối và cảnh báo khi phát hiện tin giả độc hại', async () => {
   const fakeArticle = {
     title: 'Thông tin thất thiệt bịa đặt',
