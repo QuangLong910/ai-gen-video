@@ -44,7 +44,29 @@ export const OFFICIAL_NEWS_DOMAINS = [
 export function isOfficialNewsDomain(domainOrUrl) {
   if (!domainOrUrl) return false;
   const lower = domainOrUrl.toLowerCase();
-  return OFFICIAL_NEWS_DOMAINS.some((d) => lower.includes(d));
+  const domainAliases = [
+    'lao động',
+    'dân trí',
+    'tuổi trẻ',
+    'vnexpress',
+    'tiền phong',
+    'thanh niên',
+    'công an nhân dân',
+    'vietnamnet',
+    'vtv',
+    'vov',
+    'nhân dân',
+    'thể thao & văn hóa',
+    'chính phủ',
+    'quân đội nhân dân',
+    'hà nội mới',
+    'báo tin tức',
+    'sài gòn giải phóng',
+  ];
+  return (
+    OFFICIAL_NEWS_DOMAINS.some((d) => lower.includes(d)) ||
+    domainAliases.some((a) => lower.includes(a))
+  );
 }
 
 /**

@@ -68,7 +68,7 @@ if (!fs.existsSync(scriptJsonPath)) {
 }
 
 const scriptData = JSON.parse(fs.readFileSync(scriptJsonPath, 'utf-8'));
-const scriptList = scriptData.script || scriptData.segments || [];
+const scriptList = scriptData.scenes || scriptData.script || scriptData.segments || [];
 const rawText = Array.isArray(scriptList) ? scriptList.map((s) => s.text).join(' ') : (scriptData.fullText || '');
 // Chuẩn hóa phát âm tự nhiên tiếng Việt cho TTS (24/7 đọc là "hai tư trên bảy")
 const fullText = rawText

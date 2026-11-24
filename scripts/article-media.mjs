@@ -138,10 +138,17 @@ export function upgradeToMasterImageUrl(url) {
     clean = clean.replace(/\/(?:_zoom|zoom)\/\d+_\d+\//i, '/');
   }
 
-  // 2. VietnamNet (vnncdn) / Thanh Niên / Tiền Phong: bỏ resize query params nếu không có signature
-  if (clean.includes('vnncdn.net') || clean.includes('thanhnien.vn') || clean.includes('tienphong.vn')) {
+  // 2. VietnamNet (vnncdn) / Thanh Niên / Tiền Phong / Lao Động: bỏ resize query params nếu không có signature
+  if (
+    clean.includes('vnncdn.net') ||
+    clean.includes('thanhnien.vn') ||
+    clean.includes('tienphong.vn') ||
+    clean.includes('laodong.vn')
+  ) {
     clean = clean.replace(/[?&](?:width|w|maxwidth)=\d+/gi, '');
-    clean = clean.replace(/\?&/, '?').replace(/[?&]$/, '');
+    clean = clean.replace(/[?&](?:height|h)=\d+/gi, '');
+    clean = clean.replace(/[?&](?:crop|scale)=[^&]+/gi, '');
+    clean = clean.replace(/\?&+/, '?').replace(/[?&]$/, '');
   }
 
   // 3. WordPress & CMS thumbnail suffixes: -300x200.jpg, -768x432.png, _thumb.jpg, -thumb.jpg
@@ -1238,9 +1245,9 @@ export async function downloadArticleMedia({
     }
   }
 
-  // 3. CHỈ KHI bài viết không có bất kỳ ảnh/video nào (0 ảnh & 0 video), mới tìm ảnh báo chí bổ trợ
-  if (rawImagePaths.length === 0 && savedVideos.length === 0 && fallbackQuery && typeof searchNewsImagesFn === 'function') {
-    console.log(`🔍 Bài viết không có tư liệu sẵn, đang tìm kiếm ảnh báo chí thực tế cho: "${fallbackQuery.slice(0, 60)}"...`);
+  // 3. Nếu tổng số ảnh tư liệu thu được < 4, chủ động tìm kiếm thêm ảnh báo chí thực tế bổ trợ
+  if (rawImagePaths.length < 4 && fallbackQuery && typeof searchNewsImagesFn === 'function') {
+    console.log(`🔍 Bài viết có ít hơn 4 ảnh (${rawImagePaths.length} ảnh), đang tìm kiếm thêm ảnh báo chí thực tế cho: "${fallbackQuery.slice(0, 60)}"...`);
     const searched = await searchNewsImagesFn(fallbackQuery);
     for (let i = 0; i < searched.length && rawImagePaths.length < 6; i++) {
       const imgUrl = searched[i];

@@ -209,24 +209,26 @@ async function sendVideo(videoPath, caption, replyToId = null) {
 }
 
 // ─── Network & Scraper ───────────────────────────────────────────────────────
-async function fetchHtml(url, redirectCount = 0) {
+async function fetchHtml(url, redirectCount = 0, cookie = '') {
   if (redirectCount > 5) throw new Error('Quá nhiều lượt chuyển hướng (redirect loop)');
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
+    const headers = {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Encoding': 'gzip, deflate, br',
+    };
+    if (cookie) headers['Cookie'] = cookie;
     const req = client.get(
       url,
       {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept-Encoding': 'gzip, deflate, br',
-        },
+        headers,
         timeout: 20000,
       },
       (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           const redirectUrl = new URL(res.headers.location, url).href;
-          return fetchHtml(redirectUrl, redirectCount + 1).then(resolve).catch(reject);
+          return fetchHtml(redirectUrl, redirectCount + 1, cookie).then(resolve).catch(reject);
         }
         let chunks = [];
         res.on('data', (c) => chunks.push(c));
@@ -238,7 +240,12 @@ async function fetchHtml(url, redirectCount = 0) {
             else if (encoding === 'deflate') buffer = zlib.inflateSync(buffer);
             else if (encoding === 'br') buffer = zlib.brotliDecompressSync(buffer);
           } catch (e) {}
-          resolve(buffer.toString('utf-8'));
+          const html = buffer.toString('utf-8');
+          const cookieMatch = html.match(/document\.cookie\s*=\s*["']([^;"']+)/i);
+          if (cookieMatch && !cookie) {
+            return fetchHtml(url, redirectCount + 1, cookieMatch[1]).then(resolve).catch(reject);
+          }
+          resolve(html);
         });
       }
     );
@@ -286,12 +293,12 @@ async function scrapeArticle(url) {
   // 2. Tìm CHÍNH XÁC toàn bộ vùng nội dung bài báo (tránh bị cắt cụt bởi thẻ lồng nhau hoặc thẻ <article> tin liên quan)
   const cleanedHtml = extractArticleBodyHtml(html);
 
-  // 3. Trích xuất Paragraphs từ văn bản sạch
+  // 3. Trích xuất Paragraphs từ văn bản sạch (hỗ trợ cả thẻ <p>...</p> thông thường và thẻ <p> không đóng như báo Lao Động)
   const paras = [];
-  const pRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
-  let pMatch;
-  while ((pMatch = pRegex.exec(cleanedHtml)) !== null) {
-    const text = pMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  const pChunks = cleanedHtml.split(/<p\b[^>]*>/i);
+  for (const chunk of pChunks.slice(1)) {
+    const rawText = chunk.split(/<\/?(?:p|div|section|article|figure|h\d|ul|ol|table)\b/i)[0];
+    const text = rawText.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
     if (
       text.length > 25 &&
       !text.includes('Theo dõi') &&
@@ -754,7 +761,11 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
       JSON.stringify(
         {
           title: articleData.title,
+          scenes: scriptData.scenes,
           script: scriptData.scenes.map((s) => ({ id: s.id, text: s.text })),
+          captionTitle: scriptData.captionTitle,
+          captionBody: scriptData.captionBody,
+          hashtags: scriptData.hashtags,
         },
         null,
         2
@@ -844,7 +855,7 @@ export interface VideoContentProps {
 
 export const VideoContent: React.FC<VideoContentProps> = ({
   slug = '${slug}',
-  showSubtitles = false,
+  showSubtitles = true,
 }) => {
   const transitionTiming = linearTiming({durationInFrames: 15});
   const springTransitionTiming = springTiming({durationInFrames: 15, config: {damping: 200}});
@@ -1277,32 +1288,38 @@ async function pollTelegramUpdates() {
 }
 
 // ─── Khởi chạy: Chế độ CLI hoặc Chế độ Bot Daemon ────────────────────────────
-if (process.argv[2]) {
-  const targetInput = process.argv[2];
-  let targetSec = 38;
-  if (process.argv[3]) {
-    const parsed = parseInt(process.argv[3].toString().replace(/\D/g, ''), 10);
-    if (!isNaN(parsed) && parsed > 15 && parsed <= 90) {
-      targetSec = parsed;
-    }
-  }
-  const isUrl = targetInput.startsWith('http');
-  console.log(`[CLI] 🚀 Khởi chạy tạo video trực tiếp cho ${isUrl ? 'URL' : 'nội dung văn bản'}: ${targetInput.slice(0, 80)} (thời lượng: ${targetSec}s)`);
-  executeVideoPipeline(targetInput, null, { targetDuration: targetSec })
-    .then(() => {
-      console.log('✅ [CLI] Toàn bộ pipeline đã hoàn tất thành công!');
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('❌ [CLI] Lỗi pipeline:', err);
-      process.exit(1);
-    });
-} else {
-  console.log('====================================================');
-  console.log('🚀 DỊCH VỤ TELEGRAM BOT 2 CHIỀU ĐÃ BẮT ĐẦU HOẠT ĐỘNG');
-  console.log(`🤖 Bot Username: @honghot247_hunter_bot`);
-  console.log(`👤 Authorized Chat ID: ${CHAT_ID}`);
-  console.log('====================================================');
+export { scrapeArticle, generateVideoScript, executeVideoPipeline };
 
-  pollTelegramUpdates();
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+
+if (isMainModule) {
+  if (process.argv[2]) {
+    const targetInput = process.argv[2];
+    let targetSec = 38;
+    if (process.argv[3]) {
+      const parsed = parseInt(process.argv[3].toString().replace(/\D/g, ''), 10);
+      if (!isNaN(parsed) && parsed > 15 && parsed <= 90) {
+        targetSec = parsed;
+      }
+    }
+    const isUrl = targetInput.startsWith('http');
+    console.log(`[CLI] 🚀 Khởi chạy tạo video trực tiếp cho ${isUrl ? 'URL' : 'nội dung văn bản'}: ${targetInput.slice(0, 80)} (thời lượng: ${targetSec}s)`);
+    executeVideoPipeline(targetInput, null, { targetDuration: targetSec })
+      .then(() => {
+        console.log('✅ [CLI] Toàn bộ pipeline đã hoàn tất thành công!');
+        process.exit(0);
+      })
+      .catch((err) => {
+        console.error('❌ [CLI] Lỗi pipeline:', err);
+        process.exit(1);
+      });
+  } else {
+    console.log('====================================================');
+    console.log('🚀 DỊCH VỤ TELEGRAM BOT 2 CHIỀU ĐÃ BẮT ĐẦU HOẠT ĐỘNG');
+    console.log(`🤖 Bot Username: @honghot247_hunter_bot`);
+    console.log(`👤 Authorized Chat ID: ${CHAT_ID}`);
+    console.log('====================================================');
+
+    pollTelegramUpdates();
+  }
 }

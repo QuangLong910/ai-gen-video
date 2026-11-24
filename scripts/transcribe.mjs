@@ -71,8 +71,9 @@ const scriptFile = path.join(ROOT, 'videos', slug, 'script', 'script.json');
 if (fs.existsSync(scriptFile)) {
   try {
     const sData = JSON.parse(fs.readFileSync(scriptFile, 'utf-8'));
-    if (Array.isArray(sData.script)) {
-      scriptText = sData.script.map((s) => s.text).join('\n');
+    const list = sData.scenes || sData.script || sData.segments || [];
+    if (Array.isArray(list)) {
+      scriptText = list.map((s) => s.text).join('\n');
     }
   } catch (e) {}
 }
