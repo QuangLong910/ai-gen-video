@@ -8,11 +8,15 @@ import {
   extractArticleBodyHtml,
   extractImagesFromHtml,
   extractVideosFromHtml,
+  extractMediaCatalog,
   interleaveMedia,
   distributeMediaToScenes,
+  syncMediaToScenes,
   parseBestFromSrcset,
   upgradeToMasterImageUrl,
   cropAllImagesWithPython,
+  cleanCaptionText,
+  isChartOrInfographicMeta,
 } from './article-media.mjs';
 
 test('VnExpress: lấy đủ nhiều ảnh từ <picture>/<source data-srcset>, giữ nguyên query string ký số (?s=...) và không bị cắt bởi thẻ <article> phụ', () => {
@@ -213,4 +217,102 @@ p.save(r'${photoPath}', quality=95)
 
   // Dọn dẹp tmp
   fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
+test('extractMediaCatalog: bóc tách chính xác chú thích ảnh, phân loại biểu đồ và kết hợp video', () => {
+  const html = `
+    <article class="fck_detail">
+      <figure class="tplCaption">
+        <img src="https://i1-vnexpress.vnecdn.net/chart-1.jpg" alt="Biểu đồ phân tích thuế suất 0,2%" />
+        <figcaption><p class="description">Biểu đồ dự kiến áp mức thuế suất 0,2% với đất bỏ hoang (Ảnh: VnExpress)</p></figcaption>
+      </figure>
+      <div class="VCSortableInPreviewMode" type="Photo">
+        <img src="https://cdn.tuoitre.vn/khu-dat.jpg" />
+        <div class="PhotoCMS_Caption"><p>Khu đất biệt thự bỏ hoang nhiều năm tại Mê Linh</p></div>
+      </div>
+      <video>
+        <source src="https://cdn.tuoitre.vn/clip-dat.mp4" type="video/mp4" />
+      </video>
+    </article>
+  `;
+
+  const catalog = extractMediaCatalog(html, html, 'https://tuoitre.vn/test.htm');
+  assert.equal(catalog.length, 3, 'Phải có 2 ảnh và 1 video');
+
+  const chartItem = catalog.find((c) => c.url.includes('chart-1.jpg'));
+  assert.ok(chartItem, 'Phải có ảnh chart-1.jpg');
+  assert.ok(chartItem.caption.includes('Biểu đồ dự kiến áp mức thuế suất 0,2%'));
+  assert.ok(!chartItem.caption.includes('(Ảnh: VnExpress)'), 'Phải làm sạch credit ảnh');
+  assert.equal(chartItem.isChart, true, 'Phải nhận diện đúng là biểu đồ');
+
+  const photoItem = catalog.find((c) => c.url.includes('khu-dat.jpg'));
+  assert.ok(photoItem, 'Phải có ảnh khu-dat.jpg');
+  assert.ok(photoItem.caption.includes('Khu đất biệt thự bỏ hoang'));
+  assert.equal(photoItem.isChart, false);
+
+  const videoItem = catalog.find((c) => c.type === 'video');
+  assert.ok(videoItem, 'Phải có video tư liệu');
+});
+
+test('syncMediaToScenes: đồng bộ tuyệt đối 3 trong 1 (nói đến đâu - đúng ảnh đó - đúng title đó)', () => {
+  const scenes = [
+    {
+      id: 1,
+      title: 'ÁP THUẾ 0,2% ĐẤT BỎ HOANG',
+      subtitle: 'Đề xuất mới nhất được Quốc hội tán thành',
+      text: 'Tin nóng! Quốc hội đã chính thức đồng ý phương án đánh thuế đối với các dự án đất chậm đưa vào sử dụng.',
+    },
+    {
+      id: 2,
+      title: 'HÀNG LOẠT KHU ĐẤT HOANG PHÍ',
+      subtitle: 'Nhiều dự án bỏ mặc cỏ mọc um tùm nhiều năm',
+      text: 'Thực tế tại nhiều địa phương, hàng ngàn héc-ta đất đai màu mỡ đang bị bỏ hoang, cỏ dại mọc cao lút đầu người.',
+    },
+    {
+      id: 3,
+      title: 'BIỂU ĐỒ MỨC THUẾ SUẤT 0,2%',
+      subtitle: 'Hiệu lực thực thi bắt đầu từ ngày 1/7/2027',
+      text: 'Theo biểu đồ dự thảo, mức thuế suất 0,2% sẽ được áp dụng định lượng cụ thể từ mốc thời gian 1 tháng 7 năm 2027.',
+    },
+    {
+      id: 4,
+      title: 'KỲ VỌNG CHỐNG ĐẦU CƠ ĐẤT',
+      subtitle: 'Bấm theo dõi kênh để cập nhật diễn biến',
+      text: 'Quy định mới kỳ vọng sẽ ngăn chặn đầu cơ lãng phí tài nguyên. Hãy bấm theo dõi Hóng Hớt hai tư trên bảy nhé!',
+    },
+  ];
+
+  const media = [
+    { type: 'image', src: 'crop_chart.jpg', caption: 'Biểu đồ lộ trình áp thuế suất đất bỏ hoang từ 1/7/2027', isChart: true },
+    { type: 'image', src: 'crop_co_hoang.jpg', caption: 'Khu đô thị bỏ hoang nhiều năm cỏ mọc um tùm', isChart: false },
+    { type: 'image', src: 'crop_quoc_hoi.jpg', caption: 'Toàn cảnh hội trường Quốc hội thảo luận về luật thuế', isChart: false },
+    { type: 'image', src: 'crop_dan_cu.jpg', caption: 'Người dân kỳ vọng thị trường bất động sản ổn định minh bạch', isChart: false },
+  ];
+
+  const distributed = syncMediaToScenes(media, scenes);
+  assert.equal(distributed.length, 4, 'Phải phân bổ đủ 4 cảnh');
+
+  // Kiểm tra Cảnh 1 (Quốc hội họp): Nhận ảnh toàn cảnh Quốc hội
+  assert.ok(
+    distributed[0].some((m) => m.src === 'crop_quoc_hoi.jpg'),
+    'Cảnh 1 phải có ảnh toàn cảnh Quốc hội'
+  );
+
+  // Kiểm tra Cảnh 2 (Đất hoang): Nhận ảnh cỏ mọc um tùm
+  assert.ok(
+    distributed[1].some((m) => m.src === 'crop_co_hoang.jpg'),
+    'Cảnh 2 phải có ảnh đất bỏ hoang cỏ mọc'
+  );
+
+  // Kiểm tra Cảnh 3 (Biểu đồ số liệu): BẮT BUỘC nhận ảnh biểu đồ crop_chart.jpg
+  assert.ok(
+    distributed[2].some((m) => m.src === 'crop_chart.jpg'),
+    'Cảnh 3 (nói về số liệu 0,2% và 1/7/2027) BẮT BUỘC phải nhận ảnh biểu đồ!'
+  );
+
+  // Kiểm tra Cảnh 4 (Kỳ vọng): Nhận ảnh người dân kỳ vọng
+  assert.ok(
+    distributed[3].some((m) => m.src === 'crop_dan_cu.jpg'),
+    'Cảnh 4 phải có ảnh người dân kỳ vọng'
+  );
 });

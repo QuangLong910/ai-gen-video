@@ -396,31 +396,130 @@ function getAttr(attrs, name) {
   return m ? (m[1] ?? m[2] ?? '') : '';
 }
 
-function addUniqueImage(list, rawUrl, baseUrl) {
+export function cleanCaptionText(raw = '') {
+  if (!raw || typeof raw !== 'string') return '';
+  return decodeHtmlEntities(raw)
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*\((?:Ảnh|Nguồn|Photo|Clip|Theo|Đồ họa)[:\s][^)]*\)/gi, '')
+    .replace(/^(?:Ảnh|Nguồn|Photo|Clip|Đồ họa)[:\s].*$/gi, '')
+    .trim();
+}
+
+export function isChartOrInfographicMeta(caption = '', urlOrSrc = '') {
+  const text = `${caption} ${urlOrSrc}`.toLowerCase();
+  const keywords = [
+    'bieu-do', 'bieudo', 'bieu_do', 'biểu đồ', 'chart', 'infographic',
+    'so-do', 'sodo', 'so_do', 'sơ đồ', 'do-thi', 'dothi', 'do_thi', 'đồ thị',
+    'bang-gia', 'banggia', 'bang_gia', 'bảng giá', 'thong-ke', 'thongke', 'thống kê',
+    'bang-so-lieu', 'bang_so_lieu', 'bảng số liệu', 'diagram', 'table', 'graph',
+    'so-sanh', 'sosanh', 'so sánh', 'ti-gia', 'ty-gia', 'tỷ giá', 'lai-suat', 'lãi suất',
+    'gdp', 'cpi'
+  ];
+  return keywords.some((k) => text.includes(k));
+}
+
+function extractCaptionFromBlock(blockHtml, fallbackAlt = '') {
+  if (!blockHtml) return cleanCaptionText(fallbackAlt);
+  const figcap = blockHtml.match(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i);
+  if (figcap) {
+    const text = cleanCaptionText(figcap[1]);
+    if (text) return text;
+  }
+  const capDiv = blockHtml.match(
+    /<(?:div|p|span)\b[^>]*class=["'][^"']*(?:caption|description)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|p|span)>/i
+  );
+  if (capDiv) {
+    const text = cleanCaptionText(capDiv[1]);
+    if (text) return text;
+  }
+  return cleanCaptionText(fallbackAlt);
+}
+
+function addUniqueImage(list, rawUrl, baseUrl, caption = '', captionMap = null) {
   const url = normalizeMediaUrl(rawUrl, baseUrl);
   if (!url || isBadImageUrl(url)) return;
   const upgraded = upgradeToMasterImageUrl(url);
-  if (list.some((existing) => isSameImage(existing, upgraded) || isSameImage(existing, url))) return;
+  const existing = list.find((e) => isSameImage(e, upgraded) || isSameImage(e, url));
+  if (existing) {
+    if (caption && captionMap && !captionMap.get(existing)) {
+      captionMap.set(existing, caption);
+    }
+    return;
+  }
   list.push(upgraded);
+  if (caption && captionMap) {
+    captionMap.set(upgraded, caption);
+  }
 }
 
-function scanImagesInChunk(chunk, baseUrl) {
+function scanImagesInChunk(chunk, baseUrl, captionMap = null) {
   const found = [];
 
-  // 1. Quét theo thứ tự xuất hiện của <picture>, <img>, và <a ... lightbox/ảnh gốc>
-  // Quét từng <picture>...</picture> trước để lấy ảnh phân giải cao nhất từ <source data-srcset / srcset>
+  // 1. Quét các khối có kèm chú thích trước (<figure>...</figure> hoặc <div type="Photo">...</div>)
+  const blockRegex = /<(?:figure|div)\b[^>]*(?:class=["'][^"']*(?:image|tplCaption|VCSortableInPreviewMode|Photo)[^"']*|type=["']Photo["'])[^>]*>([\s\S]*?)<\/(?:figure|div)>/gi;
+  let bm;
+  while ((bm = blockRegex.exec(chunk)) !== null) {
+    const blockContent = bm[0];
+    const innerImg = blockContent.match(/<img\b([^>]*)>/i);
+    const altText = innerImg ? (getAttr(innerImg[1], 'alt') || getAttr(innerImg[1], 'title')) : '';
+    const blockCaption = extractCaptionFromBlock(blockContent, altText);
+
+    // Lấy ảnh trong khối này
+    const sourceRegex = /<source\b([^>]*)>/gi;
+    let sm;
+    let addedFromBlock = false;
+    while ((sm = sourceRegex.exec(blockContent)) !== null) {
+      const sAttrs = sm[1];
+      const best =
+        parseBestFromSrcset(getAttr(sAttrs, 'data-srcset'), baseUrl) ||
+        parseBestFromSrcset(getAttr(sAttrs, 'srcset'), baseUrl) ||
+        normalizeMediaUrl(getAttr(sAttrs, 'data-src') || getAttr(sAttrs, 'src'), baseUrl);
+      if (best && !isBadImageUrl(best)) {
+        addUniqueImage(found, best, baseUrl, blockCaption, captionMap);
+        addedFromBlock = true;
+        break;
+      }
+    }
+
+    if (innerImg) {
+      const iAttrs = innerImg[1];
+      const clsId = `${getAttr(iAttrs, 'class')} ${getAttr(iAttrs, 'id')}`;
+      if (!BAD_CLASS_OR_ID_REGEX.test(clsId)) {
+        const orig =
+          getAttr(iAttrs, 'data-original') ||
+          getAttr(iAttrs, 'data-full-src') ||
+          getAttr(iAttrs, 'data-large-src') ||
+          getAttr(iAttrs, 'data-zoom-src') ||
+          getAttr(iAttrs, 'data-high-res-src') ||
+          getAttr(iAttrs, 'data-lazy-src') ||
+          getAttr(iAttrs, 'data-src') ||
+          parseBestFromSrcset(getAttr(iAttrs, 'data-srcset'), baseUrl) ||
+          parseBestFromSrcset(getAttr(iAttrs, 'srcset'), baseUrl) ||
+          getAttr(iAttrs, 'src');
+        if (orig) {
+          addUniqueImage(found, orig, baseUrl, blockCaption, captionMap);
+          addedFromBlock = true;
+        }
+      }
+    }
+  }
+
+  // 2. Quét <picture>...</picture> còn lại
   const pictureRegex = /<picture\b[^>]*>([\s\S]*?)<\/picture>/gi;
   let pm;
   while ((pm = pictureRegex.exec(chunk)) !== null) {
     const inner = pm[1];
-    // Kiểm tra nếu thẻ img bên trong có class rác
     const innerImg = inner.match(/<img\b([^>]*)>/i);
+    const altText = innerImg ? (getAttr(innerImg[1], 'alt') || getAttr(innerImg[1], 'title')) : '';
+    const caption = cleanCaptionText(altText);
+
     if (innerImg) {
       const clsId = `${getAttr(innerImg[1], 'class')} ${getAttr(innerImg[1], 'id')}`;
       if (BAD_CLASS_OR_ID_REGEX.test(clsId)) continue;
     }
 
-    // Ưu tiên data-original / data-full-src trên img trước
     if (innerImg) {
       const orig =
         getAttr(innerImg[1], 'data-original') ||
@@ -428,12 +527,11 @@ function scanImagesInChunk(chunk, baseUrl) {
         getAttr(innerImg[1], 'data-large-src') ||
         getAttr(innerImg[1], 'data-zoom-src');
       if (orig) {
-        addUniqueImage(found, orig, baseUrl);
+        addUniqueImage(found, orig, baseUrl, caption, captionMap);
         continue;
       }
     }
 
-    // Sau đó lấy URL tốt nhất từ <source data-srcset / srcset> (rất quan trọng cho VnExpress & Dân Trí!)
     const sourceRegex = /<source\b([^>]*)>/gi;
     let sm;
     let gotFromSource = false;
@@ -444,14 +542,13 @@ function scanImagesInChunk(chunk, baseUrl) {
         parseBestFromSrcset(getAttr(sAttrs, 'srcset'), baseUrl) ||
         normalizeMediaUrl(getAttr(sAttrs, 'data-src') || getAttr(sAttrs, 'src'), baseUrl);
       if (best && !isBadImageUrl(best)) {
-        addUniqueImage(found, best, baseUrl);
+        addUniqueImage(found, best, baseUrl, caption, captionMap);
         gotFromSource = true;
         break;
       }
     }
     if (gotFromSource) continue;
 
-    // Fallback về <img> trong <picture>
     if (innerImg) {
       const iAttrs = innerImg[1];
       const cand =
@@ -460,19 +557,19 @@ function scanImagesInChunk(chunk, baseUrl) {
         parseBestFromSrcset(getAttr(iAttrs, 'data-srcset'), baseUrl) ||
         parseBestFromSrcset(getAttr(iAttrs, 'srcset'), baseUrl) ||
         getAttr(iAttrs, 'src');
-      if (cand) addUniqueImage(found, cand, baseUrl);
+      if (cand) addUniqueImage(found, cand, baseUrl, caption, captionMap);
     }
   }
 
-  // 2. Quét tất cả thẻ <img> trong chunk
+  // 3. Quét tất cả thẻ <img> còn lại trong chunk
   const imgTagRegex = /<img\b([^>]*)>/gi;
   let im;
   while ((im = imgTagRegex.exec(chunk)) !== null) {
     const attrs = im[1];
     const clsId = `${getAttr(attrs, 'class')} ${getAttr(attrs, 'id')}`;
     if (BAD_CLASS_OR_ID_REGEX.test(clsId)) continue;
+    const caption = cleanCaptionText(getAttr(attrs, 'alt') || getAttr(attrs, 'title'));
 
-    // Ưu tiên ảnh gốc độ phân giải cao nhất
     const candidates = [
       getAttr(attrs, 'data-original'),
       getAttr(attrs, 'data-full-src'),
@@ -490,29 +587,29 @@ function scanImagesInChunk(chunk, baseUrl) {
       if (!c) continue;
       const normalized = normalizeMediaUrl(c, baseUrl);
       if (normalized && !isBadImageUrl(normalized)) {
-        addUniqueImage(found, normalized, baseUrl);
+        addUniqueImage(found, normalized, baseUrl, caption, captionMap);
         break;
       }
     }
   }
 
-  // 3. Quét các link lightbox / gallery ảnh gốc (<a href="...jpg|png|webp">)
+  // 4. Quét các link lightbox / gallery ảnh gốc (<a href="...jpg|png|webp">)
   const linkImgRegex = /<a\b([^>]*)>/gi;
   let lm;
   while ((lm = linkImgRegex.exec(chunk)) !== null) {
     const attrs = lm[1];
     const href = getAttr(attrs, 'href') || getAttr(attrs, 'data-src');
     if (href && /\.(?:jpg|jpeg|png|webp)(?:\?|$)/i.test(decodeHtmlEntities(href))) {
-      addUniqueImage(found, href, baseUrl);
+      addUniqueImage(found, href, baseUrl, '', captionMap);
     }
   }
 
-  // 4. Poster từ thẻ <video poster="..."> (nếu cần bổ sung tư liệu ảnh)
+  // 5. Poster từ thẻ <video poster="..."> (nếu cần bổ sung tư liệu ảnh)
   const videoPosterRegex = /<video\b([^>]*)>/gi;
   let vm;
   while ((vm = videoPosterRegex.exec(chunk)) !== null) {
     const poster = getAttr(vm[1], 'poster') || getAttr(vm[1], 'data-poster');
-    if (poster) addUniqueImage(found, poster, baseUrl);
+    if (poster) addUniqueImage(found, poster, baseUrl, 'Ảnh bìa video tư liệu', captionMap);
   }
 
   return found;
@@ -535,10 +632,11 @@ function extractJsonLdBlocks(fullHtml) {
 }
 
 /**
- * Trích xuất TẤT CẢ ảnh báo chí từ bài viết (KHÔNG giới hạn 1-4 ảnh).
+ * Trích xuất TẤT CẢ ảnh báo chí từ bài viết kèm bản đồ chú thích ảnh (captionMap)
  */
 export function extractImagesFromHtml(contentHtml, fullHtml, baseUrl = '', maxImages = 24) {
-  const images = scanImagesInChunk(contentHtml, baseUrl);
+  const captionMap = new Map();
+  const images = scanImagesInChunk(contentHtml, baseUrl, captionMap);
 
   // Nếu vùng thân bài chỉ trích xuất được <= 1 ảnh (ví dụ bài Photo Story, bài đa phương tiện có gallery nằm ngoài div text),
   // quét bổ sung tất cả <figure> và <picture> trong toàn trang (đã lọc bỏ header/footer/nav/sidebar/related).
@@ -546,9 +644,9 @@ export function extractImagesFromHtml(contentHtml, fullHtml, baseUrl = '', maxIm
     const cleanedFull = stripNoiseBlocks(fullHtml);
     const figureMatches = cleanedFull.match(/<(?:figure|picture)\b[^>]*>[\s\S]*?<\/(?:figure|picture)>/gi) || [];
     for (const fig of figureMatches) {
-      const figImgs = scanImagesInChunk(fig, baseUrl);
+      const figImgs = scanImagesInChunk(fig, baseUrl, captionMap);
       for (const u of figImgs) {
-        addUniqueImage(images, u, baseUrl);
+        addUniqueImage(images, u, baseUrl, captionMap.get(u) || '', captionMap);
       }
     }
   }
@@ -565,8 +663,8 @@ export function extractImagesFromHtml(contentHtml, fullHtml, baseUrl = '', maxIm
       if (node.image) {
         const imgs = Array.isArray(node.image) ? node.image : [node.image];
         for (const item of imgs) {
-          if (typeof item === 'string') addUniqueImage(images, item, baseUrl);
-          else if (item && typeof item === 'object' && item.url) addUniqueImage(images, item.url, baseUrl);
+          if (typeof item === 'string') addUniqueImage(images, item, baseUrl, '', captionMap);
+          else if (item && typeof item === 'object' && item.url) addUniqueImage(images, item.url, baseUrl, item.caption || '', captionMap);
         }
       }
       if (node['@graph']) collectJsonImages(node['@graph']);
@@ -582,17 +680,50 @@ export function extractImagesFromHtml(contentHtml, fullHtml, baseUrl = '', maxIm
       const attrs = mm[1];
       if (/(?:property|name|itemprop)=["'](?:og:image|og:image:secure_url|twitter:image|image|thumbnailUrl)["']/i.test(attrs)) {
         const content = getAttr(attrs, 'content');
-        if (content) addUniqueImage(images, content, baseUrl);
+        if (content) addUniqueImage(images, content, baseUrl, 'Ảnh đại diện bài báo', captionMap);
       }
     }
     const linkRegex = /<link\s+[^>]*rel=["']image_src["'][^>]*href=["']([^"']+)["']/gi;
     let lm;
     while ((lm = linkRegex.exec(fullHtml)) !== null) {
-      addUniqueImage(images, lm[1], baseUrl);
+      addUniqueImage(images, lm[1], baseUrl, '', captionMap);
     }
   }
 
-  return images.slice(0, maxImages);
+  const sliced = images.slice(0, maxImages);
+  sliced.captionMap = captionMap;
+  return sliced;
+}
+
+/**
+ * Trích xuất danh mục tư liệu đầy đủ kèm chú thích và phân loại biểu đồ
+ */
+export function extractMediaCatalog(contentHtml, fullHtml, baseUrl = '') {
+  const imgUrls = extractImagesFromHtml(contentHtml, fullHtml, baseUrl);
+  const videoUrls = extractVideosFromHtml(contentHtml, fullHtml, baseUrl);
+  const captionMap = imgUrls.captionMap || new Map();
+  const catalog = [];
+
+  for (const u of imgUrls) {
+    const caption = captionMap.get(u) || '';
+    catalog.push({
+      type: 'image',
+      url: u,
+      caption,
+      isChart: isChartOrInfographicMeta(caption, u),
+    });
+  }
+
+  for (const v of videoUrls) {
+    catalog.push({
+      type: 'video',
+      url: v,
+      caption: 'Video tư liệu hiện trường',
+      isChart: false,
+    });
+  }
+
+  return catalog;
 }
 
 // ─── Video Extraction ────────────────────────────────────────────────────────
@@ -1024,12 +1155,15 @@ export async function downloadArticleMedia({
   fallbackImageSource = '',
   maxImages = 20,
   maxVideos = 6,
+  captionMap = null,
 }) {
   fs.mkdirSync(outDir, { recursive: true });
   const pythonBin = detectPythonBin();
   const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+  const captionLookup = captionMap || (imgUrls && imgUrls.captionMap ? imgUrls.captionMap : new Map());
   const rawImagePaths = [];
+  const rawImageOrigins = [];
   const savedVideos = [];
 
   // 1. Tải TẤT CẢ video tư liệu từ bài viết (nếu có)
@@ -1040,7 +1174,13 @@ export async function downloadArticleMedia({
     try {
       console.log(`  [Video tư liệu ${savedVideos.length + 1}/${Math.min(videoUrls.length, maxVideos)}] Đang tải: ${vUrl.slice(0, 80)}...`);
       const durationSec = await downloadAndNormalizeVideo(vUrl, vidPath, articleUrl);
-      savedVideos.push({ type: 'video', src: vidFilename, durationSec });
+      savedVideos.push({
+        type: 'video',
+        src: vidFilename,
+        durationSec,
+        caption: 'Video tư liệu hiện trường',
+        isChart: false,
+      });
       console.log(`  ✅ [Video tư liệu ${savedVideos.length}] Thành công (${durationSec.toFixed(1)}s): ${vidFilename}`);
     } catch (err) {
       console.warn(`  ⚠️ Bỏ qua video lỗi (${vUrl.slice(0, 60)}):`, err.message);
@@ -1081,6 +1221,12 @@ export async function downloadArticleMedia({
         try {
           validateImageWithPython(pythonBin, rawPath);
           rawImagePaths.push(rawPath);
+          const itemCaption = captionLookup.get(originalUrl) || captionLookup.get(fetchUrl) || '';
+          rawImageOrigins.push({
+            fetchUrl,
+            originalUrl,
+            caption: itemCaption,
+          });
           console.log(`  [Ảnh báo chí ${rawImagePaths.length}] Tải thành công: ${fetchUrl.slice(0, 80)}...`);
           break; // Đã tải xong ảnh hợp lệ, chuyển sang ảnh tiếp theo
         } catch {
@@ -1108,6 +1254,11 @@ export async function downloadArticleMedia({
         try {
           validateImageWithPython(pythonBin, rawPath);
           rawImagePaths.push(rawPath);
+          rawImageOrigins.push({
+            fetchUrl: imgUrl,
+            originalUrl: imgUrl,
+            caption: fallbackQuery,
+          });
           console.log(`  [Ảnh tìm kiếm ${rawImagePaths.length}] Tải thành công: ${imgUrl.slice(0, 80)}...`);
         } catch {
           if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
@@ -1140,8 +1291,17 @@ export async function downloadArticleMedia({
     }
   }
 
-  // 6. Kết hợp đầy đủ tất cả ảnh + video vào danh sách mediaItems (đan xen hợp lý để video xuất hiện đều các cảnh)
-  const imageItems = savedImages.map((src) => ({ type: 'image', src }));
+  // 6. Kết hợp đầy đủ tất cả ảnh + video vào danh sách mediaItems kèm chú thích và nhận diện biểu đồ
+  const imageItems = savedImages.map((src, idx) => {
+    const origin = rawImageOrigins[idx % Math.max(1, rawImageOrigins.length)] || {};
+    const caption = origin.caption || '';
+    return {
+      type: 'image',
+      src,
+      caption,
+      isChart: isChartOrInfographicMeta(caption, src),
+    };
+  });
   const mediaItems = interleaveMedia(imageItems, savedVideos);
 
   return {
@@ -1190,10 +1350,226 @@ export function interleaveMedia(imageItems = [], videoItems = []) {
 }
 
 /**
- * Phân bổ TOÀN BỘ tư liệu (ảnh + video) đều vào 4 cảnh.
- * Đảm bảo 100% tư liệu đã tải đều được đưa vào video, không bỏ sót bất kỳ ảnh/video nào!
+ * Tính điểm độ phù hợp giữa một tư liệu và một cảnh trong kịch bản
  */
-export function distributeMediaToScenes(mediaItems, sceneCount = 4) {
+export function scoreMediaForScene(item, scene, sceneIndex = 0) {
+  const itemText = `${item.caption || ''} ${item.src || ''}`.toLowerCase();
+  const sceneText = `${scene.title || ''} ${scene.subtitle || ''} ${scene.text || ''}`.toLowerCase();
+  let score = 0;
+
+  // A. Biểu đồ / Bảng số liệu / Thống kê -> Ưu tiên cảnh nói về số liệu/tiền tệ/thuế/giá
+  const isChart = item.isChart || isChartOrInfographicMeta(item.caption, item.src);
+  if (isChart) {
+    const chartKeywords = [
+      '%', 'phần trăm', 'tỷ', 'triệu', 'đồng', 'usd', 'giá', 'thuế', 'mức',
+      'tăng', 'giảm', 'biến động', 'số liệu', 'thống kê', 'doanh thu', 'lợi nhuận',
+      'độ c', 'mm', 'nhiệt độ', 'lượng mưa'
+    ];
+    const matchCount = chartKeywords.filter((k) => sceneText.includes(k)).length;
+    score += matchCount * 6;
+    if (matchCount > 0) score += 20; // Boost lớn cho cảnh nói về con số định lượng
+  }
+
+  // B. Bắt bớ / Khởi tố / Công an / Hiện trường điều tra
+  const crimeKeywords = ['bắt', 'tạm giam', 'công an', 'cảnh sát', 'khởi tố', 'điều tra', 'tang vật', 'hành vi', 'vi phạm'];
+  if (crimeKeywords.some((k) => itemText.includes(k))) {
+    const count = crimeKeywords.filter((k) => sceneText.includes(k)).length;
+    score += count * 8;
+  }
+
+  // C. Tòa án / Phiên tòa / Bị cáo / Xét xử
+  const courtKeywords = ['tòa án', 'xét xử', 'bị cáo', 'hội đồng', 'viện kiểm sát', 'tuyên phạt', 'tù', 'án'];
+  if (courtKeywords.some((k) => itemText.includes(k))) {
+    const count = courtKeywords.filter((k) => sceneText.includes(k)).length;
+    score += count * 8;
+  }
+
+  // D. Cấp cứu / Bệnh viện / Nạn nhân / Y tế
+  const medicalKeywords = ['cấp cứu', 'bệnh viện', 'nạn nhân', 'bị thương', 'tử vong', 'thiệt mạng', 'cứu hộ', 'y tế'];
+  if (medicalKeywords.some((k) => itemText.includes(k))) {
+    const count = medicalKeywords.filter((k) => sceneText.includes(k)).length;
+    score += count * 8;
+  }
+
+  // E. Hiện trường / Tai nạn / Vụ cháy / Toàn cảnh (Ưu tiên cảnh 1 Hook mở đầu)
+  const hookKeywords = ['toàn cảnh', 'hiện trường', 'tai nạn', 'cháy', 'sập', 'khẩn cấp', 'vụ việc', 'sự cố'];
+  if (hookKeywords.some((k) => itemText.includes(k))) {
+    if (sceneIndex === 0) score += 12;
+    const count = hookKeywords.filter((k) => sceneText.includes(k)).length;
+    score += count * 5;
+  }
+
+  // F. Trùng từ vựng danh từ riêng (>= 4 ký tự)
+  const words = itemText
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 4);
+  for (const w of words) {
+    if (sceneText.includes(w)) {
+      score += 4;
+    }
+  }
+
+  // G. Video tư liệu: ưu tiên cảnh 1 hoặc 2 để thu hút retention
+  if (item.type === 'video') {
+    if (sceneIndex <= 1) score += 8;
+  }
+
+  return score;
+}
+
+/**
+ * Thuật toán ghép nối ngữ nghĩa thông minh giữa tư liệu và các cảnh
+ */
+export function matchMediaSemantically(mediaItems, scriptScenes) {
+  const sceneCount = 4;
+  const scenes = Array.from({ length: sceneCount }, () => []);
+  if (!mediaItems || mediaItems.length === 0) {
+    return scenes.map(() => [{ type: 'image', src: 'crop_0.jpg' }]);
+  }
+
+  const scores = mediaItems.map((item) =>
+    scriptScenes.map((scene, sIdx) => scoreMediaForScene(item, scene, sIdx))
+  );
+
+  const assigned = new Set();
+
+  // 1. Gán biểu đồ vào cảnh nói về số liệu / thống kê / thuế suất
+  for (let i = 0; i < mediaItems.length; i++) {
+    const item = mediaItems[i];
+    if (item.isChart || isChartOrInfographicMeta(item.caption, item.src)) {
+      let bestScene = 2; // Thường cảnh 3 nói về số liệu
+      let maxScore = -1;
+      for (let s = 0; s < sceneCount; s++) {
+        if (scores[i][s] > maxScore) {
+          maxScore = scores[i][s];
+          bestScene = s;
+        }
+      }
+      scenes[bestScene].push(item);
+      assigned.add(i);
+      break;
+    }
+  }
+
+  // 2. Gán 1 tư liệu phù hợp nhất cho các cảnh còn trống
+  for (let s = 0; s < sceneCount; s++) {
+    if (scenes[s].length > 0) continue;
+    let bestItem = -1;
+    let maxScore = -Infinity;
+    for (let i = 0; i < mediaItems.length; i++) {
+      if (assigned.has(i)) continue;
+      if (scores[i][s] > maxScore) {
+        maxScore = scores[i][s];
+        bestItem = i;
+      }
+    }
+    if (bestItem !== -1) {
+      scenes[s].push(mediaItems[bestItem]);
+      assigned.add(bestItem);
+    }
+  }
+
+  // 3. Phân bổ các tư liệu còn lại (đảm bảo không sót bất kỳ tư liệu nào)
+  for (let i = 0; i < mediaItems.length; i++) {
+    if (assigned.has(i)) continue;
+    let bestScene = 0;
+    let maxScore = -Infinity;
+    for (let s = 0; s < sceneCount; s++) {
+      // Ưu tiên cảnh có ít tư liệu và điểm cao
+      const adjusted = scores[i][s] - scenes[s].length * 6;
+      if (adjusted > maxScore) {
+        maxScore = adjusted;
+        bestScene = s;
+      }
+    }
+    scenes[bestScene].push(mediaItems[i]);
+    assigned.add(i);
+  }
+
+  // 4. Bảo đảm không cảnh nào bị rỗng (ít nhất 1 tư liệu / cảnh)
+  for (let s = 0; s < sceneCount; s++) {
+    if (scenes[s].length === 0) {
+      const donor = scenes.find((list) => list.length >= 2);
+      if (donor) {
+        scenes[s].push(donor.pop());
+      } else {
+        scenes[s].push(mediaItems[s % mediaItems.length]);
+      }
+    }
+  }
+
+  return scenes;
+}
+
+/**
+ * Đồng bộ hóa tư liệu vào 4 cảnh (kết hợp chỉ định của AI và đối soát ngữ nghĩa)
+ * ĐẢM BẢO: NÓI ĐẾN ĐÂU - ĐÚNG ẢNH ĐÓ - ĐÚNG TIÊU ĐỀ ĐÓ!
+ */
+export function syncMediaToScenes(mediaItems, scriptScenes = []) {
+  const sceneCount = 4;
+  if (!mediaItems || mediaItems.length === 0) {
+    return Array.from({ length: sceneCount }, () => [{ type: 'image', src: 'crop_0.jpg' }]);
+  }
+
+  if (!scriptScenes || scriptScenes.length === 0) {
+    return distributeMediaToScenes(mediaItems, sceneCount);
+  }
+
+  // Kiểm tra nếu kịch bản AI đã trả về mediaIndices hợp lệ
+  const assignedByAi = Array.from({ length: sceneCount }, () => []);
+  const used = new Set();
+  let aiCount = 0;
+
+  for (let s = 0; s < Math.min(scriptScenes.length, sceneCount); s++) {
+    const sc = scriptScenes[s];
+    if (Array.isArray(sc.mediaIndices) && sc.mediaIndices.length > 0) {
+      for (const idx of sc.mediaIndices) {
+        if (Number.isInteger(idx) && idx >= 0 && idx < mediaItems.length && !used.has(idx)) {
+          assignedByAi[s].push(mediaItems[idx]);
+          used.add(idx);
+          aiCount++;
+        }
+      }
+    }
+  }
+
+  // Nếu AI đã chỉ định hợp lệ cho ít nhất 2 cảnh, tôn trọng chỉ định của AI và san sẻ nốt phần còn lại
+  if (aiCount >= 2) {
+    const unused = mediaItems.filter((_, idx) => !used.has(idx));
+    for (const it of unused) {
+      let minLen = Infinity;
+      let targetScene = 0;
+      for (let s = 0; s < sceneCount; s++) {
+        if (assignedByAi[s].length < minLen) {
+          minLen = assignedByAi[s].length;
+          targetScene = s;
+        }
+      }
+      assignedByAi[targetScene].push(it);
+    }
+    for (let s = 0; s < sceneCount; s++) {
+      if (assignedByAi[s].length === 0) {
+        const donor = assignedByAi.find((list) => list.length >= 2);
+        if (donor) assignedByAi[s].push(donor.pop());
+        else assignedByAi[s].push(mediaItems[s % mediaItems.length]);
+      }
+    }
+    return assignedByAi;
+  }
+
+  // Ngược lại, kích hoạt bộ phân tích Semantic Matching tự động
+  return matchMediaSemantically(mediaItems, scriptScenes);
+}
+
+/**
+ * Phân bổ tư liệu đều vào 4 cảnh (hỗ trợ cả tham số sceneCount dạng số hoặc mảng scriptScenes)
+ */
+export function distributeMediaToScenes(mediaItems, scenesOrCount = 4) {
+  if (Array.isArray(scenesOrCount)) {
+    return syncMediaToScenes(mediaItems, scenesOrCount);
+  }
+  const sceneCount = typeof scenesOrCount === 'number' ? scenesOrCount : 4;
   const scenes = Array.from({ length: sceneCount }, () => []);
   if (!mediaItems || mediaItems.length === 0) {
     return scenes.map(() => [{ type: 'image', src: 'crop_0.jpg' }]);
@@ -1211,7 +1587,7 @@ export function distributeMediaToScenes(mediaItems, sceneCount = 4) {
     return scenes;
   }
 
-  // Trường hợp hiếm: tổng tư liệu ít hơn số cảnh (< 4) -> trải đều vòng tròn
+  // Trường hợp ít hơn 4 tư liệu -> trải đều vòng tròn
   for (let s = 0; s < sceneCount; s++) {
     scenes[s] = [mediaItems[s % mediaItems.length]];
   }

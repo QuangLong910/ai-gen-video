@@ -115,6 +115,13 @@ When the user types `/gen-video [--template <template-id>] [--audio=<mode>] <con
   * Pacing đổi ảnh nhanh (2.5s - 3s / ảnh): Tuyệt đối KHÔNG giữ 1 ảnh đứng im 7-9 giây khiến người xem chán lướt qua. Trung bình cứ 2.5s - 3s phải đổi ảnh mới hoặc đổi góc zoom Ken Burns nhẹ vào khuôn mặt/chi tiết quan trọng.
   * Dynamic Subtitles: Luôn có phụ đề TTS chạy chữ theo lời nói ở giữa màn hình (ngay trên mép banner) để người xem tắt tiếng vẫn nắm bắt toàn bộ câu chuyện.
 → Subtitles Proofreader rule: Bắt buộc luôn chạy bước rà soát chính tả chữ chạy tự động (Subtitles Proofreader) sau khi STT xong để đối chiếu timeline.json với kịch bản gốc script.json, sửa sạch toàn bộ lỗi phiên âm, lỗi nghe nhầm hay sai chính tả ngớ ngẩn (như "cô lộc bộ" ➔ "câu lạc bộ", "giàn" ➔ "dàn", sai tên riêng/giải đấu) trước khi đưa vào render video.
+→ 3-in-1 Multimodal Synchronization Rule (Nói đến đâu - Đúng ảnh đó - Đúng tiêu đề đó):
+  * BẮT BUỘC ĐỒNG BỘ 100% giữa Lời bình (voiceover/text) - Hình ảnh hiển thị (media) - Tiêu đề cảnh (title & subtitle).
+  * Lời bình nói đến đâu thì hình ảnh và tiêu đề trên màn hình phải minh họa và tóm tắt chính xác nội dung đó:
+    - Nếu cảnh nói về số liệu, biến động, thuế suất, giá cả, nhiệt độ định lượng -> BẮT BUỘC hiển thị ảnh Biểu đồ / Sơ đồ / Bảng số liệu, tiêu đề phải phản ánh rõ con số/biến động đó.
+    - Nếu cảnh nói về hiện trường, điều tra, bắt bớ, tòa án, cứu hộ -> BẮT BUỘC hiển thị đúng ảnh hiện trường, công an, bị cáo, bệnh viện tương ứng.
+  * Tuyệt đối KHÔNG ĐỂ XẢY RA: Ảnh hiển thị 1 kiểu, nội dung nói 1 kiểu khác, và tiêu đề lại 1 kiểu khác. Cả 3 yếu tố phải tạo thành một khối thống nhất hoàn chỉnh.
+  * Phân bổ tư liệu: Sử dụng `syncMediaToScenes` để ghép nối tư liệu thông minh vào 4 cảnh dựa trên chú thích ảnh và từ khóa ngữ nghĩa, đảm bảo mỗi cảnh có ít nhất 1 tư liệu và 100% tư liệu đã thu thập đều được sử dụng.
 → Evergreen & Emotional/Humorous Filler rule: Khi thời điểm đói tin nóng hoặc người dùng yêu cầu tìm tin, luôn chủ động chuẩn bị và đề xuất thêm các chủ đề cảm động (nghĩa cử ấm lòng, tình người trong mưa lũ/khó khăn, tấm gương nghị lực) hoặc hài hước (tình huống đời thường dở khóc dở cười, chuyện đám cưới/thú cưng/văn phòng viral) để kênh luôn có nội dung giữ chân khán giả và duy trì lịch đăng đều đặn mỗi ngày.
 → Read `docs/SKILL-GEN-VIDEO.md` and execute the 8-step pipeline:
   Setup → Planner → Teller → Audio → Transcribe → Spec → Coder → Render

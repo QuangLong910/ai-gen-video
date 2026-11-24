@@ -112,7 +112,7 @@ export function heuristicFactCheck(articleData, scriptData) {
   const updatedScript = JSON.parse(JSON.stringify(scriptData));
 
   for (const scene of updatedScript.scenes) {
-    // 1. Kiểm tra từ "khẩn cấp"
+    // 1. Kiểm tra từ "khẩn cấp" trong lời thoại và tiêu đề
     if (scene.text && /khẩn cấp/i.test(scene.text)) {
       issues.push(`Cảnh ${scene.id}: Lạm dụng từ "khẩn cấp" gây báo động giả.`);
       scene.text = scene.text
@@ -120,6 +120,11 @@ export function heuristicFactCheck(articleData, scriptData) {
         .replace(/tin khẩn cấp[!,.]*/gi, 'Tin nóng!')
         .replace(/khẩn cấp/gi, 'nóng nhất');
       corrections.push(`Cảnh ${scene.id}: Thay thế "khẩn cấp" thành "Tin nóng / mới nhất".`);
+    }
+    if (scene.title && /khẩn cấp/i.test(scene.title)) {
+      issues.push(`Cảnh ${scene.id}: Tiêu đề chứa từ "KHẨN CẤP".`);
+      scene.title = scene.title.replace(/khẩn cấp/gi, 'NÓNG NHẤT');
+      corrections.push(`Cảnh ${scene.id}: Chuẩn hóa tiêu đề bỏ từ "KHẨN CẤP".`);
     }
 
     // 2. Kiểm tra nói quá trong tin thời tiết

@@ -23,8 +23,10 @@ import {
   extractArticleBodyHtml,
   extractImagesFromHtml,
   extractVideosFromHtml,
+  extractMediaCatalog,
   downloadArticleMedia,
   distributeMediaToScenes,
+  syncMediaToScenes,
 } from './article-media.mjs';
 import {
   loadBotMemory,
@@ -304,6 +306,7 @@ async function scrapeArticle(url) {
   // 4. Trích xuất ĐẦY ĐỦ TẤT CẢ ảnh & video từ bài viết (hỗ trợ <picture>, srcset, data-original, data-src, signed CDN URL, video mp4/m3u8, JSON-LD...)
   const imgUrls = extractImagesFromHtml(cleanedHtml, html, url, 24);
   const videoUrls = extractVideosFromHtml(cleanedHtml, html, url, 8);
+  const mediaCatalog = extractMediaCatalog(cleanedHtml, html, url);
 
   return {
     url,
@@ -312,6 +315,7 @@ async function scrapeArticle(url) {
     content: paras.slice(0, 25).join('\n\n'), // Đảm bảo cung cấp đầy đủ dữ liệu thời tiết/sự kiện chi tiết cho AI
     imgUrls,
     videoUrls,
+    mediaCatalog,
   };
 }
 
@@ -337,7 +341,7 @@ async function searchNewsImages(query) {
 }
 
 // ─── AI Script Generation with Gemini ───────────────────────────────────────
-async function generateVideoScript(articleData, targetDuration = 38, userFeedback = null) {
+async function generateVideoScript(articleData, targetDuration = 38, userFeedback = null, availableMedia = []) {
   if (!ai) throw new Error('GEMINI_API_KEY chưa được cấu hình');
 
   let lengthReq = '3. THỜI LƯỢNG: Đúng 4 cảnh, tổng số từ khoảng 140 - 160 từ tiếng Việt (tương đương 35 - 38 giây đọc).';
@@ -364,6 +368,29 @@ Chủ kênh đã gửi chỉ đạo sửa kịch bản cho video này như sau:
     directivesSection = `
 7. CÁC NGUYÊN TẮC / DẶN DÒ TỪ CHỦ KÊNH ĐÃ LƯU TRONG BỘ NHỚ:
 ${memory.customDirectives.map((d, i) => `   - [Quy tắc ${i + 1}]: ${d}`).join('\n')}`;
+  }
+
+  let mediaCatalogSection = '';
+  if (Array.isArray(availableMedia) && availableMedia.length > 0) {
+    const listLines = availableMedia
+      .map((m, idx) => {
+        const typeStr = m.type === 'video' ? '[VIDEO TƯ LIỆU]' : m.isChart ? '[BIỂU ĐỒ / BẢNG SỐ LIỆU]' : '[ẢNH BÁO CHÍ]';
+        const desc = m.caption ? `"${m.caption}"` : `Tư liệu số ${idx + 1}`;
+        return `   - [Tư liệu ${idx}] (${typeStr}): ${desc}`;
+      })
+      .join('\n');
+
+    mediaCatalogSection = `
+8. 📸 DANH SÁCH TƯ LIỆU ẢNH & VIDEO ĐANG CÓ SẴN (BẮT BUỘC ĐỒNG BỘ 100%):
+${listLines}
+
+QUY TẮC ĐỒNG BỘ 3 TRONG 1: NÓI ĐẾN ĐÂU - ĐÚNG ẢNH ĐÓ - ĐÚNG TIÊU ĐỀ ĐÓ (SYNCHRONIZED MULTIMODAL ALIGNMENT):
+- NÓI ĐẾN ĐÂU - ĐÚNG ẢNH ĐÓ: Lời bình (text) đang nói đến nhân vật, sự kiện, hiện trường hay con số nào thì ảnh hiển thị trên màn hình PHẢI là tư liệu về nội dung đó!
+  * NẾU CẢNH NÓI VỀ SỐ LIỆU / GIÁ CẢ / THUẾ / BIẾN ĐỘNG / NHIỆT ĐỘ: BẮT BUỘC gán chỉ số của ảnh Biểu đồ / Bảng số liệu vào cảnh đó!
+  * NẾU CẢNH NÓI VỀ HIỆN TRƯỜNG / TAI NẠN / BẮT GIỮ / TÒA ÁN: BẮT BUỘC gán đúng ảnh hiện trường / bắt giữ / tòa án vào cảnh đó!
+- TIÊU ĐỀ ĐỒNG BỘ TUYỆT ĐỐI (title & subtitle): Tiêu đề và tóm tắt của từng cảnh PHẢI phản ánh chính xác nội dung đang nói và hình ảnh đang chiếu ở cảnh đó.
+  * TUYỆT ĐỐI TRÁNH: Ảnh hiển thị 1 kiểu, lời bình nói 1 kiểu khác, và title lại 1 kiểu khác! Cả 3 yếu tố phải tạo thành một khối thống nhất hoàn chỉnh.
+- CHỈ ĐỊNH "mediaIndices": Trong mỗi cảnh trong JSON trả về, BẮT BUỘC có trường "mediaIndices": [chỉ_số_tư_liệu] (ví dụ: [0], [1, 2]...) từ danh sách tư liệu trên, đảm bảo 4 cảnh bao quát trọn vẹn mạch tư liệu.`;
   }
 
   const prompt = `Bạn là biên tập viên tin tức hàng đầu của kênh mạng xã hội "HÓNG HỚT 24/7" (TikTok, Reels, Shorts).
@@ -395,6 +422,7 @@ ${lengthReq}
 5. CAPTION & 5 HASHTAG: Tạo caption đăng mạng xã hội và CHỈ DÙNG TỐI ĐA 5 HASHTAG (chọn 5 hashtag đắt giá, cô đọng nhất).
 ${feedbackSection}
 ${directivesSection}
+${mediaCatalogSection}
 
 TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
 {
@@ -404,28 +432,32 @@ TRẢ VỀ DUY NHẤT 1 ĐỐI TƯỢNG JSON (không kèm markdown \`\`\`json):
       "text": "Lời bình voiceover cảnh 1 có hook giật gân...",
       "title": "TIÊU ĐỀ CẢNH 1 IN HOA",
       "subtitle": "Tóm tắt cảnh 1 ngắn gọn",
-      "categoryTag": "🚨 TIN NÓNG"
+      "categoryTag": "🚨 TIN NÓNG",
+      "mediaIndices": [0]
     },
     {
       "id": 2,
       "text": "Lời bình voiceover cảnh 2 phát triển sự việc...",
       "title": "TIÊU ĐỀ CẢNH 2 IN HOA",
       "subtitle": "Tóm tắt cảnh 2",
-      "categoryTag": "⚡ DIỄN BIẾN MỚI"
+      "categoryTag": "⚡ DIỄN BIẾN MỚI",
+      "mediaIndices": [1]
     },
     {
       "id": 3,
       "text": "Lời bình voiceover cảnh 3 đi vào cao trào / chi tiết quan trọng...",
       "title": "TIÊU ĐỀ CẢNH 3 IN HOA",
       "subtitle": "Tóm tắt cảnh 3",
-      "categoryTag": "📌 CHI TIẾT ĐẮT GIÁ"
+      "categoryTag": "📌 CHI TIẾT ĐẮT GIÁ",
+      "mediaIndices": [2]
     },
     {
       "id": 4,
       "text": "Lời bình voiceover cảnh 4 kết luận và kêu gọi: Hãy bấm theo dõi Hóng Hớt hai tư trên bảy để cập nhật tin mới nhất nhé!",
       "title": "TIÊU ĐỀ CẢNH 4 IN HOA",
       "subtitle": "Bấm theo dõi kênh để cập nhật diễn biến tiếp theo",
-      "categoryTag": "🔔 THEO DÕI NGAY"
+      "categoryTag": "🔔 THEO DÕI NGAY",
+      "mediaIndices": [3]
     }
   ],
   "captionTitle": "Tiêu đề bài đăng mạng xã hội giật gân",
@@ -634,12 +666,13 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
       fallbackQuery: articleData.title,
       searchNewsImagesFn: searchNewsImages,
       fallbackImageSource: path.join(ROOT, 'public/assets/news/default_news_bg.jpg'),
+      captionMap: articleData.imgUrls?.captionMap || null,
     });
     console.log(
       `[${slug}] Đã chuẩn bị ĐẦY ĐỦ tư liệu: ${mediaResult.rawImageCount} ảnh gốc (${mediaResult.savedImages.length} ảnh hiển thị) + ${mediaResult.rawVideoCount} video tư liệu = ${mediaResult.mediaItems.length} tư liệu ghép vào video.`
     );
 
-    // 2. Viết kịch bản bằng Gemini AI
+    // 2. Viết kịch bản bằng Gemini AI (truyền đầy đủ danh mục ảnh/video để đồng bộ Lời bình - Ảnh - Tiêu đề)
     const mediaSummary =
       mediaResult.rawVideoCount > 0
         ? `${mediaResult.rawImageCount} ảnh & ${mediaResult.rawVideoCount} video tư liệu`
@@ -650,7 +683,7 @@ async function executeVideoPipeline(urlOrText, replyMessageId, options = {}) {
     );
     await sendChatAction('typing');
 
-    let scriptData = await generateVideoScript(articleData, targetDuration, options.userFeedback);
+    let scriptData = await generateVideoScript(articleData, targetDuration, options.userFeedback, mediaResult.mediaItems);
 
     // 2.5 Kiểm chứng đối soát sự thật với báo chí chính thống (Fact-Checking & Truth Verification)
     await sendMessage(
@@ -776,8 +809,11 @@ export const COLORS = {
     rootContent = rootContent.replace(/slug:\s*['"][^'"]+['"]/, `slug: '${slug}'`);
     fs.writeFileSync(rootPath, rootContent);
 
-    // Cập nhật VideoContent.tsx — Phân bổ ĐẦY ĐỦ tất cả ảnh & video tư liệu vào 4 cảnh
-    const [s1_media, s2_media, s3_media, s4_media] = distributeMediaToScenes(mediaResult.mediaItems, 4);
+    // Cập nhật VideoContent.tsx — Đồng bộ ngữ nghĩa: Nói đến đâu - Đúng ảnh đó - Đúng tiêu đề đó
+    const [s1_media, s2_media, s3_media, s4_media] = syncMediaToScenes(mediaResult.mediaItems, scriptData.scenes);
+    console.log(
+      `[${slug}] Đã đồng bộ tư liệu vào 4 cảnh: Cảnh 1 (${s1_media.length}), Cảnh 2 (${s2_media.length}), Cảnh 3 (${s3_media.length}), Cảnh 4 (${s4_media.length})`
+    );
     const todayStr = `${new Date().getDate()}/${new Date().getMonth() + 1}/${new Date().getFullYear()}`;
 
     const videoContentCode = `import React from 'react';
