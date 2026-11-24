@@ -118,6 +118,40 @@ export function isBadVideoUrl(url) {
 }
 
 /**
+ * Nâng cấp URL ảnh từ thumbnail/preview lên bản master gốc độ phân giải cao nhất
+ * (bỏ các tiền tố /thumb_w/, /zoom/, query width nhỏ của các báo chí Việt Nam và CMS)
+ */
+export function upgradeToMasterImageUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  let clean = url;
+
+  // 1. Dân Trí / Tuổi Trẻ / VCCorp mediacdn / Kênh 14 / CafeF: loại bỏ /thumb_w/\d+/ và /zoom/\d+_\d+/
+  if (
+    clean.includes('dantri.com.vn') ||
+    clean.includes('tuoitre.vn') ||
+    clean.includes('mediacdn.vn') ||
+    clean.includes('kenh14cdn.com') ||
+    clean.includes('cafefcdn.com') ||
+    clean.includes('sohacdn.com')
+  ) {
+    clean = clean.replace(/\/thumb_w\/\d+\//i, '/');
+    clean = clean.replace(/\/(?:_zoom|zoom)\/\d+_\d+\//i, '/');
+  }
+
+  // 2. VietnamNet (vnncdn) / Thanh Niên / Tiền Phong: bỏ resize query params nếu không có signature
+  if (clean.includes('vnncdn.net') || clean.includes('thanhnien.vn') || clean.includes('tienphong.vn')) {
+    clean = clean.replace(/[?&](?:width|w|maxwidth)=\d+/gi, '');
+    clean = clean.replace(/\?&/, '?').replace(/[?&]$/, '');
+  }
+
+  // 3. WordPress & CMS thumbnail suffixes: -300x200.jpg, -768x432.png, _thumb.jpg, -thumb.jpg
+  clean = clean.replace(/-\d{3,4}x\d{3,4}(\.[a-zA-Z0-9]+(?:\?.*)?)$/i, '$1');
+  clean = clean.replace(/[-_]thumb(\.[a-zA-Z0-9]+(?:\?.*)?)$/i, '$1');
+
+  return clean;
+}
+
+/**
  * So sánh 2 URL ảnh có cùng một gốc ảnh hay không (bỏ qua query string & hậu tố crop/thumb)
  * LƯU Ý: Chỉ dùng để chống trùng lặp, KHÔNG bao giờ cắt query string khi lưu/tải URL!
  */
@@ -365,8 +399,9 @@ function getAttr(attrs, name) {
 function addUniqueImage(list, rawUrl, baseUrl) {
   const url = normalizeMediaUrl(rawUrl, baseUrl);
   if (!url || isBadImageUrl(url)) return;
-  if (list.some((existing) => isSameImage(existing, url))) return;
-  list.push(url);
+  const upgraded = upgradeToMasterImageUrl(url);
+  if (list.some((existing) => isSameImage(existing, upgraded) || isSameImage(existing, url))) return;
+  list.push(upgraded);
 }
 
 function scanImagesInChunk(chunk, baseUrl) {
@@ -691,18 +726,18 @@ function validateImageWithPython(pythonBin, rawPath) {
     'from PIL import Image',
     'im = Image.open(sys.argv[1])',
     'w, h = im.size',
-    'if w < 300 or h < 200: sys.exit(1)',
+    'if w < 450 or h < 300: sys.exit(1)',
     'ratio = w / h',
-    'if ratio < 0.35 or ratio > 2.8: sys.exit(1)',
+    'if ratio < 0.30 or ratio > 3.2: sys.exit(1)',
   ].join('\n');
 
   execFileSync(pythonBin, ['-c', pyCode, rawPath], { stdio: 'ignore' });
 }
 
-function cropAllImagesWithPython(pythonBin, rawPaths, outDir, minOutputs = 4) {
+export function cropAllImagesWithPython(pythonBin, rawPaths, outDir, minOutputs = 4) {
   const pyCode = `
 import json, os, sys
-from PIL import Image
+from PIL import Image, ImageFilter, ImageEnhance
 
 raw_paths = json.loads(sys.argv[1])
 out_dir = sys.argv[2]
@@ -710,6 +745,84 @@ min_outputs = int(sys.argv[3])
 
 target_w, target_h = 1080, 1040
 target_ratio = target_w / target_h
+
+def is_chart_or_infographic(im, path_str):
+    p_lower = path_str.lower()
+    chart_keywords = [
+        'bieu-do', 'bieudo', 'bieu_do', 'chart', 'infographic',
+        'so-do', 'sodo', 'so_do', 'do-thi', 'dothi', 'do_thi',
+        'bang-gia', 'banggia', 'bang_gia', 'thong-ke', 'thongke', 'thong_ke',
+        'bang-so-lieu', 'bang_so_lieu', 'diagram', 'table', 'graph', 'figure',
+        'truc-quan', 'timeline', 'so-sanh', 'sosanh', 'so-lieu', 'solieu',
+        'gdp', 'cpi', 'lai-suat', 'ti-gia', 'ty-gia', 'chungkhoan', 'gia-vang'
+    ]
+    if any(k in p_lower for k in chart_keywords):
+        return True
+
+    w, h = im.size
+    ratio = w / h
+
+    # Nếu tỉ lệ lệch khỏi khung vuông (rộng >= 1.35 hoặc cao <= 0.82)
+    # Kiểm tra màu nền sáng/đơn sắc đặc trưng của biểu đồ & bảng dữ liệu
+    if ratio >= 1.35 or ratio <= 0.82:
+        try:
+            im_rgb = im.convert('RGB')
+            corners = [
+                im_rgb.getpixel((min(10, w - 1), min(10, h - 1))),
+                im_rgb.getpixel((max(0, w - 11), min(10, h - 1))),
+                im_rgb.getpixel((min(10, w - 1), max(0, h - 11))),
+                im_rgb.getpixel((max(0, w - 11), max(0, h - 11)))
+            ]
+            white_corners = sum(1 for (r, g, b) in corners if r > 230 and g > 230 and b > 230)
+            if white_corners >= 2:
+                return True
+            c0 = corners[0]
+            corner_diff = sum(abs(c[0]-c0[0]) + abs(c[1]-c0[1]) + abs(c[2]-c0[2]) for c in corners)
+            if corner_diff < 40 and (ratio >= 1.45 or ratio <= 0.75):
+                return True
+        except Exception:
+            pass
+
+    # Nếu tỉ lệ cực rộng (>= 1.60 như 16:9, 18:9, 21:9) hoặc cực hẹp (<= 0.65):
+    # center-crop sẽ cắt mất 38%-50% hình ảnh! Dùng smart fit để bảo toàn toàn bộ ảnh!
+    if ratio >= 1.60 or ratio <= 0.65:
+        return True
+
+    return False
+
+def make_smart_fit(im):
+    w, h = im.size
+    # 1. Nền mờ đồng bộ màu (ambient Gaussian blur backdrop)
+    if w / h > target_ratio:
+        nw = int(h * target_ratio)
+        left = (w - nw) // 2
+        bg_crop = im.crop((left, 0, left + nw, h))
+    else:
+        nh = int(w / target_ratio)
+        top = (h - nh) // 2
+        bg_crop = im.crop((0, top, w, top + nh))
+
+    bg = bg_crop.resize((target_w, target_h), Image.Resampling.LANCZOS)
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=32))
+    bg = ImageEnhance.Brightness(bg).enhance(0.68)
+
+    # 2. Tiền cảnh: Giữ nguyên 100% biểu đồ / ảnh gốc, scale vừa vặn trong safe zone
+    max_w, max_h = 1040, 990
+    scale = min(max_w / w, max_h / h)
+    fw = int(w * scale)
+    fh = int(h * scale)
+    fg = im.resize((fw, fh), Image.Resampling.LANCZOS)
+    fg = fg.filter(ImageFilter.UnsharpMask(radius=1.2, percent=110, threshold=2))
+
+    # 3. Căn giữa hoàn hảo
+    pos_x = (target_w - fw) // 2
+    pos_y = (target_h - fh) // 2
+    if fg.mode in ('RGBA', 'LA') or (fg.mode == 'P' and 'transparency' in fg.info):
+        bg.paste(fg, (pos_x, pos_y), fg.convert('RGBA'))
+    else:
+        bg.paste(fg, (pos_x, pos_y))
+
+    return bg.convert('RGB')
 
 def make_center_crop(im):
     w, h = im.size
@@ -722,7 +835,8 @@ def make_center_crop(im):
         nh = int(w / target_ratio)
         top = (h - nh) // 2
         c = im.crop((0, top, w, top + nh))
-    return c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB')
+    c_res = c.resize((target_w, target_h), Image.Resampling.LANCZOS).convert('RGB')
+    return c_res.filter(ImageFilter.UnsharpMask(radius=1.0, percent=90, threshold=2))
 
 def make_zoom_crop(base, zoom_factor=0.85):
     margin_w = int(target_w * (1 - zoom_factor) / 2)
@@ -736,14 +850,20 @@ def make_upper_crop(base):
 
 bases = []
 saved = []
+is_fitted_list = []
 
 for idx, rp in enumerate(raw_paths):
     try:
         im = Image.open(rp)
-        b = make_center_crop(im)
+        is_fit = is_chart_or_infographic(im, rp)
+        if is_fit:
+            b = make_smart_fit(im)
+        else:
+            b = make_center_crop(im)
         fname = f'crop_{len(saved)}.jpg'
         b.save(os.path.join(out_dir, fname), quality=95)
         bases.append(b)
+        is_fitted_list.append(is_fit)
         saved.append(fname)
     except Exception:
         pass
@@ -753,9 +873,14 @@ if len(bases) > 0 and len(saved) < min_outputs:
     zoom_factors = [0.85, 0.78, 0.88]
     zi = 0
     while len(saved) < min_outputs:
-        base = bases[zi % len(bases)]
+        base_idx = zi % len(bases)
+        base = bases[base_idx]
+        is_fit = is_fitted_list[base_idx]
         fname = f'crop_{len(saved)}.jpg'
-        if zi == 2 and len(bases) == 1:
+        if is_fit:
+            # Biểu đồ/đồ họa: giữ nguyên toàn vẹn không zoom-crop làm mất số liệu
+            base.save(os.path.join(out_dir, fname), quality=95)
+        elif zi == 2 and len(bases) == 1:
             make_upper_crop(base).save(os.path.join(out_dir, fname), quality=95)
         else:
             zf = zoom_factors[zi % len(zoom_factors)]
@@ -923,38 +1048,47 @@ export async function downloadArticleMedia({
     }
   }
 
-  // 2. Tải TẤT CẢ ảnh báo chí từ bài viết (KHÔNG giới hạn 4 ảnh nữa!)
+  // 2. Tải TẤT CẢ ảnh báo chí từ bài viết (ưu tiên bản master chất lượng cao nhất)
   for (let i = 0; i < imgUrls.length && rawImagePaths.length < maxImages; i++) {
-    const imgUrl = imgUrls[i];
+    const originalUrl = imgUrls[i];
+    const candidateUrls = [originalUrl];
+    const upgraded = upgradeToMasterImageUrl(originalUrl);
+    if (upgraded && upgraded !== originalUrl) {
+      candidateUrls.unshift(upgraded); // Thử bản master độ phân giải cao trước
+    }
+
     const rawPath = path.join(outDir, `raw_${rawImagePaths.length}.jpg`);
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      const headers = {
-        'User-Agent': ua,
-        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-      };
-      if (articleUrl) headers.Referer = articleUrl;
-
-      const res = await fetch(imgUrl, { headers, signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (!res.ok) continue;
-
-      const arrayBuffer = await res.arrayBuffer();
-      if (arrayBuffer.byteLength < 12 * 1024) continue; // Bỏ qua icon/ảnh < 12KB
-
-      fs.writeFileSync(rawPath, Buffer.from(arrayBuffer));
-
+    for (const fetchUrl of candidateUrls) {
       try {
-        validateImageWithPython(pythonBin, rawPath);
-        rawImagePaths.push(rawPath);
-        console.log(`  [Ảnh báo chí ${rawImagePaths.length}] Tải thành công: ${imgUrl.slice(0, 80)}...`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const headers = {
+          'User-Agent': ua,
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        };
+        if (articleUrl) headers.Referer = articleUrl;
+
+        const res = await fetch(fetchUrl, { headers, signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!res.ok) continue;
+
+        const arrayBuffer = await res.arrayBuffer();
+        if (arrayBuffer.byteLength < 12 * 1024) continue; // Bỏ qua icon/ảnh < 12KB
+
+        fs.writeFileSync(rawPath, Buffer.from(arrayBuffer));
+
+        try {
+          validateImageWithPython(pythonBin, rawPath);
+          rawImagePaths.push(rawPath);
+          console.log(`  [Ảnh báo chí ${rawImagePaths.length}] Tải thành công: ${fetchUrl.slice(0, 80)}...`);
+          break; // Đã tải xong ảnh hợp lệ, chuyển sang ảnh tiếp theo
+        } catch {
+          if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+        }
       } catch {
         if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
       }
-    } catch {
-      if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
     }
   }
 

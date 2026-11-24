@@ -232,46 +232,46 @@ export function computeImageMotionStyle(params: {
 
   switch (preset) {
     case 'zoom-in-punch': {
-      const punch = (1 - easeOutExpo(clamp01(f / 10))) * 0.07;
-      baseScale = lerp(1.09, 1.18, e) + punch;
-      baseTx = lerp(-18, 18, e);
-      baseTy = lerp(10, -12, e);
-      baseRot = lerp(-0.4, 0.4, e);
+      const punch = (1 - easeOutExpo(clamp01(f / 10))) * 0.02;
+      baseScale = lerp(1.01, 1.04, e) + punch;
+      baseTx = lerp(-6, 6, e);
+      baseTy = lerp(4, -4, e);
+      baseRot = lerp(-0.2, 0.2, e);
       break;
     }
     case 'pan-left-zoom': {
-      baseScale = lerp(1.11, 1.19, e);
-      baseTx = lerp(-38, 38, e);
-      baseTy = lerp(8, -10, e);
-      baseRot = lerp(0, 0.5, e);
+      baseScale = lerp(1.02, 1.05, e);
+      baseTx = lerp(-10, 10, e);
+      baseTy = lerp(3, -3, e);
+      baseRot = lerp(0, 0.2, e);
       break;
     }
     case 'zoom-out-reveal': {
-      baseScale = lerp(1.22, 1.09, e);
-      baseTx = lerp(16, -16, e);
-      baseTy = lerp(22, -18, e);
-      baseRot = lerp(0.6, -0.4, e);
+      baseScale = lerp(1.05, 1.01, e);
+      baseTx = lerp(6, -6, e);
+      baseTy = lerp(6, -6, e);
+      baseRot = lerp(0.2, -0.2, e);
       break;
     }
     case 'pan-right-tilt': {
-      baseScale = lerp(1.12, 1.2, e);
-      baseTx = lerp(38, -38, e);
-      baseTy = lerp(-12, 14, e);
-      baseRot = lerp(-1.1, 0.9, e);
+      baseScale = lerp(1.02, 1.05, e);
+      baseTx = lerp(10, -10, e);
+      baseTy = lerp(-3, 3, e);
+      baseRot = lerp(-0.2, 0.2, e);
       break;
     }
     case 'drift-up-focus': {
-      baseScale = lerp(1.11, 1.19, e);
-      baseTx = lerp(-12, 12, e);
-      baseTy = lerp(36, -34, e);
-      baseRot = lerp(0.3, -0.3, e);
+      baseScale = lerp(1.02, 1.05, e);
+      baseTx = lerp(-4, 4, e);
+      baseTy = lerp(8, -8, e);
+      baseRot = lerp(0.1, -0.1, e);
       break;
     }
     case 'diagonal-glide': {
-      baseScale = lerp(1.12, 1.21, e);
-      baseTx = lerp(-34, 34, e);
-      baseTy = lerp(26, -26, e);
-      baseRot = lerp(1.0, -0.8, e);
+      baseScale = lerp(1.02, 1.05, e);
+      baseTx = lerp(-8, 8, e);
+      baseTy = lerp(6, -6, e);
+      baseRot = lerp(0.2, -0.2, e);
       break;
     }
   }
@@ -290,29 +290,29 @@ export function computeImageMotionStyle(params: {
     switch (transition) {
       case 'crossfade-zoom':
         opacity = en;
-        extraScale = (1 - en) * 0.09;
-        brightness = 1 + (1 - en) * 0.14;
+        extraScale = (1 - en) * 0.03;
+        brightness = 1 + (1 - en) * 0.1;
         break;
       case 'slide-left':
         opacity = 0.25 + 0.75 * en;
-        extraX = (1 - en) * 140;
-        extraScale = (1 - en) * 0.04;
+        extraX = (1 - en) * 45;
+        extraScale = (1 - en) * 0.02;
         break;
       case 'slide-right':
         opacity = 0.25 + 0.75 * en;
-        extraX = -(1 - en) * 140;
-        extraScale = (1 - en) * 0.04;
+        extraX = -(1 - en) * 45;
+        extraScale = (1 - en) * 0.02;
         break;
       case 'slide-up':
         opacity = 0.25 + 0.75 * en;
-        extraY = (1 - en) * 110;
-        extraScale = (1 - en) * 0.05;
+        extraY = (1 - en) * 35;
+        extraScale = (1 - en) * 0.02;
         break;
       case 'zoom-flash':
         opacity = en;
-        extraScale = (1 - en) * 0.15;
-        brightness = 1 + (1 - en) * 0.22;
-        flashOpacity = (1 - en) * 0.2;
+        extraScale = (1 - en) * 0.04;
+        brightness = 1 + (1 - en) * 0.15;
+        flashOpacity = (1 - en) * 0.15;
         break;
     }
   } else if (isFirstSlide) {

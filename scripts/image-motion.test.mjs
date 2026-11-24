@@ -9,7 +9,7 @@ import {
   pickSlideTransition,
 } from '../src/scenes/imageMotion.ts';
 
-test('tất cả 6 preset chuyển động trả về số hữu hạn, scale >= 1.08 và transform hợp lệ', () => {
+test('tất cả 6 preset chuyển động trả về số hữu hạn, scale an toàn [1.01, 1.12] và transform hợp lệ', () => {
   for (const preset of IMAGE_MOTION_PRESETS) {
     for (const transition of SLIDE_TRANSITIONS) {
       const durations = [1, 30, 90];
@@ -31,7 +31,7 @@ test('tất cả 6 preset chuyển động trả về số hữu hạn, scale >=
           assert.ok(Number.isFinite(style.opacity), `${preset} opacity không hợp lệ`);
           assert.ok(Number.isFinite(style.brightness), `${preset} brightness không hợp lệ`);
           assert.ok(Number.isFinite(style.flashOpacity), `${preset} flashOpacity không hợp lệ`);
-          assert.ok(style.scale >= 1.08, `${preset} scale=${style.scale} quá nhỏ (< 1.08) dễ hở viền`);
+          assert.ok(style.scale >= 1.01 && style.scale <= 1.12, `${preset} scale=${style.scale} ngoài ngưỡng an toàn [1.01, 1.12]`);
           assert.ok(!style.transform.includes('NaN'), `${preset} transform chứa NaN`);
           assert.ok(style.transform.includes('translate3d('));
           assert.ok(style.transform.includes('scale('));
@@ -112,7 +112,7 @@ test('computeImageMotionStyle giữ slide đầu opacity=1 và chuyển mượt 
     isFirstSlide: false,
   });
   assert.equal(nextAt0.opacity, 0);
-  assert.ok(nextAt0.flashOpacity > 0.15);
+  assert.ok(nextAt0.flashOpacity >= 0.14, 'flashOpacity tại localFrame=0 phải >= 0.14');
 
   const nextAtEnd = computeImageMotionStyle({
     localFrame: 10,
